@@ -3,7 +3,7 @@ import { COLORS } from '../data/theme';
 import { HEALS } from '../data/items';
 import { TouchControls } from '../ui/TouchControls';
 import { touch } from '../core/touchInput';
-import { GAMEPLAY } from '../data/balance';
+import { GAMEPLAY, ringOuterRadius, RING_COUNT } from '../data/balance';
 
 // HUD-оверлей. Читает состояние из registry['hud'], которое пишет WorldScene.
 export class UIScene extends Phaser.Scene {
@@ -151,10 +151,16 @@ export class UIScene extends Phaser.Scene {
     // фон + рамка
     g.fillStyle(0x0a0e18, 0.62).fillCircle(cx, cy, R + 3);
     g.lineStyle(2, 0x3a4a66, 0.9).strokeCircle(cx, cy, R + 3);
-    // граница мира / кольцо 1 / хаб
-    g.lineStyle(1, 0x2a3a2a, 0.8).strokeCircle(cx, cy, GAMEPLAY.ring1Outer * scale);
-    g.fillStyle(0x14301c, 0.5).fillCircle(cx, cy, GAMEPLAY.ring1Outer * scale);
-    g.fillStyle(0x1c2740, 0.9).fillCircle(cx, cy, GAMEPLAY.hubRadius * scale);
+    // биом-кольца (от внешнего к внутреннему)
+    const biome = [0x1c2233, 0x1a3a24, 0x233024, 0x352016, 0x1f2c3a, 0x241432];
+    for (let i = RING_COUNT; i >= 1; i--) {
+      g.fillStyle(biome[i], 0.55).fillCircle(cx, cy, ringOuterRadius(i) * scale);
+    }
+    for (let i = 1; i <= RING_COUNT; i++) {
+      g.lineStyle(1, 0x000000, 0.4).strokeCircle(cx, cy, ringOuterRadius(i) * scale);
+    }
+    // хаб
+    g.fillStyle(0x1c2740, 0.95).fillCircle(cx, cy, GAMEPLAY.hubRadius * scale);
     g.lineStyle(1, 0x4a7ac0, 0.9).strokeCircle(cx, cy, GAMEPLAY.hubRadius * scale);
 
     const toMap = (wx: number, wy: number): { x: number; y: number; out: boolean } => {
