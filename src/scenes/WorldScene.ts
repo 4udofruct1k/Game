@@ -23,9 +23,9 @@ const CULL_RANGE = 1500;
 // Цвета земли биомов по кольцам (индекс = кольцо, 0 = хаб) — насыщенные, контрастные.
 const BIOME_GROUND = [0x2a3a5c, 0x2f7a42, 0x4a6a2e, 0x7a3e20, 0x2f6088, 0x4a2274];
 // Сила мобов (спавнятся редко, поэтому крепче) и множители награды.
-const MOB_HP_MUL = 2.6;
+const MOB_HP_MUL = 5.0; // мобы «жирнее» (спавнятся редко)
 const MOB_DMG_MUL = 1.5;
-const MOB_LOOT_MUL = 2.6;
+const MOB_LOOT_MUL = 3.5;
 const MAX_MOBS = 2; // одновременно на арене (вне босса)
 
 interface Pickup {
@@ -55,6 +55,7 @@ export class WorldScene extends Phaser.Scene {
   private pProj: Projectile[] = [];
   private eProj: Projectile[] = [];
   private boss: Boss | null = null;
+  private bossObj: Boss | null = null;
   private telegraphs: Telegraph[] = [];
 
   private enemyGroup!: Phaser.Physics.Arcade.Group;
@@ -77,6 +78,10 @@ export class WorldScene extends Phaser.Scene {
   private lastRing = 0;
   private bossColliders: Phaser.Physics.Arcade.Collider[] = [];
   private groundTex!: Phaser.GameObjects.TileSprite;
+  private meleeFx!: Phaser.GameObjects.Graphics;
+  private fxPool: Phaser.GameObjects.Arc[] = [];
+  private fxIdx = 0;
+  private curBiome = -1;
   private dmgPool: Phaser.GameObjects.Text[] = [];
   private dmgIdx = 0;
   private lastDmgAt = 0;
@@ -100,13 +105,19 @@ export class WorldScene extends Phaser.Scene {
     this.energy = ENERGY_MAX;
 
     this.drawGround();
-    // текстура-шум земли (скроллится с камерой) — даёт «фактуру» биому
+    // текстура земли биома (тайл, скроллится с камерой; меняется при смене кольца)
+    this.curBiome = -1;
     this.groundTex = this.add
-      .tileSprite(0, 0, this.scale.width, this.scale.height, 'noise')
+      .tileSprite(0, 0, this.scale.width, this.scale.height, 'biome0')
       .setOrigin(0)
       .setScrollFactor(0)
       .setDepth(-8)
-      .setAlpha(0.09);
+      .setAlpha(0.5);
+
+    // переиспользуемый визуал взмаха + пул вспышек (без аллокаций на каждый удар)
+    this.meleeFx = this.add.graphics().setDepth(9);
+    this.fxPool = [];
+    this.fxIdx = 0;
 
     this.enemyGroup = this.physics.add.group();
     this.pProjGroup = this.physics.add.group();
@@ -216,6 +227,8 @@ export class WorldScene extends Phaser.Scene {
     // текстура земли скроллится с камерой
     const cam = this.cameras.main;
     this.groundTex.setTilePosition(cam.scrollX, cam.scrollY);
+    // затухание визуала взмаха
+    if (this.meleeFx.alpha > 0) this.meleeFx.setAlpha(Math.max(0, this.meleeFx.alpha - dt * 6));
 
     // энергия/реген/скиллы
     this.energy = Math.min(ENERGY_MAX, this.energy + ENERGY_REGEN * dt);
@@ -391,14 +404,17 @@ export class WorldScene extends Phaser.Scene {
     const range = arch.range;
     const facing = this.player.facing.clone();
     const angle = facing.angle();
-    const arc = arch.pattern === 'melee_thrust' ? 0.35 : arch.pattern === 'melee_wide' ? 1.7 : 1.1;
+    const arc =
+      arch.pattern === 'melee_thrust' ? 0.4 : arch.pattern === 'melee_wide' ? 2.0 : arch.pattern === 'melee_flurry' ? 1.5 : 1.2;
+    const hits = arch.pattern === 'melee_flurry' ? 2 : 1; // серия ударов
 
-    // визуал дуги
-    const g = this.add.graphics().setDepth(9);
-    g.fillStyle(0xffffff, 0.18);
+    // визуал дуги — в переиспользуемый Graphics (без аллокаций)
+    const g = this.meleeFx;
+    g.clear();
+    g.fillStyle(0xffffff, 0.9);
     g.slice(this.player.x, this.player.y, range, angle - arc / 2, angle + arc / 2, false);
     g.fillPath();
-    this.tweens.add({ targets: g, alpha: 0, duration: 140, onComplete: () => g.destroy() });
+    g.setAlpha(0.28);
 
     const input = this.baseHitInput(1.0);
     let hitAny = false;
@@ -408,14 +424,14 @@ export class WorldScene extends Phaser.Scene {
       if (d > range + e.displayWidth / 2) continue;
       const a = Phaser.Math.Angle.Between(this.player.x, this.player.y, e.x, e.y);
       if (Math.abs(Phaser.Math.Angle.Wrap(a - angle)) > arc / 2) continue;
-      this.dealToEnemy(e, input);
+      for (let h = 0; h < hits; h++) this.dealToEnemy(e, input);
       hitAny = true;
     }
     if (this.boss && this.boss.active) {
       const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.boss.x, this.boss.y);
       const a = Phaser.Math.Angle.Between(this.player.x, this.player.y, this.boss.x, this.boss.y);
       if (d <= range + this.boss.displayWidth / 2 && Math.abs(Phaser.Math.Angle.Wrap(a - angle)) <= arc / 2) {
-        this.dealToBoss(input);
+        for (let h = 0; h < hits; h++) this.dealToBoss(input);
         hitAny = true;
       }
     }
@@ -431,30 +447,44 @@ export class WorldScene extends Phaser.Scene {
     const el = this.run.loadout.weapon.element !== 'none' ? this.run.loadout.weapon.element : this.run.loadout.element;
     const facing = this.player.facing.clone().normalize();
 
-    const fanCount = this.run.loadout.weapon.id === 'sky_rain' || this.run.loadout.weapon.id === 'blade_swarm' ? 3 : 1;
+    const affix = this.run.loadout.weapon.affixText;
+    // веер: у веерных аффиксов 3, иначе 1
+    const fanCount = /веер|рой|наводится|отскок|рикошет/.test(affix) ? 3 : 1;
+    // пробитие: лук/копьё-снаряд/пробивающие аффиксы бьют насквозь
+    const pierce = arch.id === 'bow' ? 2 : /пробива|пронза|игнор брони/.test(affix) ? 4 : 1;
+    // размер снаряда крупнее у посоха/маул-магии
+    const projR = arch.id === 'staff' ? 15 : arch.id === 'bow' ? 10 : 12;
+    const speedMul = arch.id === 'bow' ? 1.25 : 1;
     for (let i = 0; i < fanCount; i++) {
-      const spread = (i - (fanCount - 1) / 2) * 0.18;
+      const spread = (i - (fanCount - 1) / 2) * 0.2;
       const dir = facing.clone().rotate(spread);
-      this.firePlayerProjectile(dir, input, el, arch.pattern === 'boomerang');
+      this.firePlayerProjectile(dir, input, el, arch.pattern === 'boomerang', pierce, projR, speedMul);
     }
   }
 
-  private firePlayerProjectile(dir: Phaser.Math.Vector2, input: HitInput, el: Element, boomerang: boolean): void {
-    // предрасчёт урона (крит/стихия фиксируются в момент попадания через dealToEnemy c этим input)
+  private firePlayerProjectile(
+    dir: Phaser.Math.Vector2,
+    input: HitInput,
+    el: Element,
+    boomerang: boolean,
+    pierce: number,
+    radius: number,
+    speedMul: number,
+  ): void {
     const proj = this.getProjectile(this.pProj, this.pProjGroup);
-    const speed = GAMEPLAY.projectileSpeed;
+    const speed = GAMEPLAY.projectileSpeed * speedMul;
     const payload = {
       owner: 'player' as const,
       raw: 0,
       element: el,
       isTrue: el === 'void',
       crit: false,
-      pierce: this.run.loadout.weapon.affixText.includes('пробива') ? 3 : 1,
+      pierce,
       boomerang,
       returnTo: boomerang ? () => new Phaser.Math.Vector2(this.player.x, this.player.y) : undefined,
     };
     (proj as Projectile & { hitInput?: HitInput }).hitInput = input;
-    proj.fire(this.player.x, this.player.y, dir.x * speed, dir.y * speed, payload, 7);
+    proj.fire(this.player.x, this.player.y, dir.x * speed, dir.y * speed, payload, radius);
   }
 
   private castSkill(): void {
@@ -463,7 +493,7 @@ export class WorldScene extends Phaser.Scene {
     const coef = CLASS_STATS[this.run.loadout.classId].skillCoef;
     this.skillCd = 5000 * (1 - s.cdrPct);
     const input = this.baseHitInput(coef);
-    const radius = 150;
+    const radius = 240;
     this.aoeBurst(this.player.x, this.player.y, radius, input, this.skillElement(), 0x88bbff);
     this.flashBanner(CLASS_STATS[this.run.loadout.classId].name + ': ' + (this.run.loadout.abilitySkill), 900);
   }
@@ -474,7 +504,7 @@ export class WorldScene extends Phaser.Scene {
     const coef = CLASS_STATS[this.run.loadout.classId].ultCoef;
     const input = this.baseHitInput(coef);
     // очистка экрана — большой AoE вокруг игрока
-    this.aoeBurst(this.player.x, this.player.y, 360, input, this.skillElement(), 0xffaa33);
+    this.aoeBurst(this.player.x, this.player.y, 500, input, this.skillElement(), 0xffaa33);
     this.cameras.main.shake(220, 0.01);
     this.flashBanner('УЛЬТА!', 1200);
   }
@@ -485,14 +515,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private aoeBurst(x: number, y: number, radius: number, input: HitInput, el: Element, color: number): void {
-    const ring = this.add.circle(x, y, 10, color, 0.35).setDepth(8);
-    this.tweens.add({
-      targets: ring,
-      radius,
-      alpha: 0,
-      duration: 260,
-      onComplete: () => ring.destroy(),
-    });
+    this.fxCircle(x, y, radius, color, 0.35);
     for (const e of this.enemies) {
       if (!e.active) continue;
       if (Phaser.Math.Distance.Between(x, y, e.x, e.y) <= radius) this.dealToEnemy(e, input, el);
@@ -558,8 +581,7 @@ export class WorldScene extends Phaser.Scene {
     const burst = triggerDmg * mult;
     // визуал
     const color = ELEMENT_COLORS[el] ?? 0xffffff;
-    const fx = this.add.circle(x, y, Math.max(20, radius), color, 0.4).setDepth(8);
-    this.tweens.add({ targets: fx, alpha: 0, scale: 1.4, duration: 220, onComplete: () => fx.destroy() });
+    this.fxCircle(x, y, Math.max(26, radius), color, 0.45);
     this.spawnDamageNumber(x, y - 14, burst, true, el, def.name);
 
     if (radius > 0) {
@@ -633,10 +655,14 @@ export class WorldScene extends Phaser.Scene {
     const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.center.x, this.center.y);
     const ring = this.ringOf(dist);
 
-    // смена биома → баннер
+    // смена биома → баннер + текстура земли
     if (ring !== this.lastRing) {
       this.lastRing = ring;
       if (ring >= 1) this.flashBanner(`Кольцо ${ring} · ${BIOME_NAMES[ring]}`, 2500);
+    }
+    if (ring !== this.curBiome) {
+      this.curBiome = ring;
+      this.groundTex.setTexture('biome' + ring);
     }
 
     // мобы спавнятся редко и по 1 (макс MAX_MOBS одновременно); во время босса — не спавнятся
@@ -715,7 +741,9 @@ export class WorldScene extends Phaser.Scene {
     const r = Math.min(ringOuterRadius(ring) - 120, pd + 620);
     const bx = this.center.x + Math.cos(ang) * r;
     const by = this.center.y + Math.sin(ang) * r;
-    this.boss = new Boss(this);
+    // переиспользуем один инстанс босса (иначе утечка при уходе/возврате к боссу)
+    if (!this.bossObj) this.bossObj = new Boss(this);
+    this.boss = this.bossObj;
     const base = RING_STATS[ring];
     this.boss.spawn(def, bx, by, {
       hp: base.hp * def.hpMult,
@@ -873,8 +901,7 @@ export class WorldScene extends Phaser.Scene {
         if (Phaser.Math.Distance.Between(this.player.x, this.player.y, t.x, t.y) <= t.radius) {
           this.hitPlayer(t.dmg, t.element);
         }
-        const flash = this.add.circle(t.x, t.y, t.radius, COLORS.telegraph, 0.5).setDepth(4);
-        this.tweens.add({ targets: flash, alpha: 0, duration: 180, onComplete: () => flash.destroy() });
+        this.fxCircle(t.x, t.y, t.radius, COLORS.telegraph, 0.5);
         t.gfx.destroy();
       }
     }
@@ -1064,8 +1091,21 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private spawnPickupFx(x: number, y: number, color: number): void {
-    const c = this.add.circle(x, y, 6, color, 0.9).setDepth(15);
-    this.tweens.add({ targets: c, scale: 2, alpha: 0, duration: 300, onComplete: () => c.destroy() });
+    this.fxCircle(x, y, 16, color, 0.9);
+  }
+
+  // Пул вспышек (расширяются и гаснут) — без аллокаций на событие.
+  private fxCircle(x: number, y: number, r: number, color: number, alpha = 0.4): void {
+    const POOL = 24;
+    let c = this.fxPool[this.fxIdx];
+    if (!c) {
+      c = this.add.circle(0, 0, 10, 0xffffff, 1).setDepth(8);
+      this.fxPool[this.fxIdx] = c;
+    }
+    this.fxIdx = (this.fxIdx + 1) % POOL;
+    this.tweens.killTweensOf(c);
+    c.setPosition(x, y).setFillStyle(color, alpha).setScale((r * 0.25) / 10).setVisible(true);
+    this.tweens.add({ targets: c, scale: r / 10, alpha: 0, duration: 240, onComplete: () => c.setVisible(false) });
   }
 
   private pushHud(): void {

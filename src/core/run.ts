@@ -65,9 +65,27 @@ export class Run {
     this.currentHP = this.stats().maxHP;
   }
 
+  private _statsCache: ResolvedStats | null = null;
+  private _statsSig = '';
+
+  // Мемоизация: пересчитываем тяжёлый пайплайн статов только при смене входов.
+  // stats() зовётся много раз за кадр (HUD, урон, реген) — кэш убирает лаги.
   stats(): ResolvedStats {
     this.build.level = this.levelState.level;
-    return computeStats(this.build);
+    const b = this.build;
+    let armorSig = '';
+    for (const k in b.armor) {
+      const p = b.armor[k as ArmorSlot];
+      if (p) armorSig += k + p.slot + p.rarity + p.enchant + '|';
+    }
+    const sig =
+      b.level + ':' + b.weapon.name + ':' + b.weaponTier + ':' + b.weaponEnchant + ':' + b.evolutionStage +
+      ':' + b.allocatedTalents.size + ':' + b.allocatedSkills.size + ':' + armorSig;
+    if (sig !== this._statsSig || !this._statsCache) {
+      this._statsSig = sig;
+      this._statsCache = computeStats(b);
+    }
+    return this._statsCache;
   }
 
   gainXP(amount: number): number {

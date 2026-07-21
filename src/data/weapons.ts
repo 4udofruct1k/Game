@@ -38,16 +38,16 @@ export interface WeaponArchetypeDef {
 
 // §20/§30 — ARCH_BASE и профили. Посох масштабируется силой магии (тот же archBase 12).
 export const WEAPON_ARCHETYPES: Record<WeaponArchetype, WeaponArchetypeDef> = {
-  sword: { id: 'sword', name: 'Одноручное', archBase: 12, atkSpeedMult: 1.0, mobilityMult: 1.0, pattern: 'melee_arc', range: 70, ranged: false, feature: 'быстрые взмахи дугой' },
-  greatsword: { id: 'greatsword', name: 'Двуручное', archBase: 24, atkSpeedMult: 0.5, mobilityMult: 0.85, pattern: 'melee_wide', range: 90, ranged: false, feature: 'широкий замах, нокбэк, стаггер' },
-  daggers: { id: 'daggers', name: 'Парные клинки', archBase: 6, atkSpeedMult: 2.2, mobilityMult: 1.1, pattern: 'melee_flurry', range: 55, ranged: false, feature: 'серия в упор, буст крита' },
-  spear: { id: 'spear', name: 'Копьё', archBase: 14, atkSpeedMult: 0.9, mobilityMult: 1.0, pattern: 'melee_thrust', range: 120, ranged: false, feature: 'пробивает по линии' },
-  bow: { id: 'bow', name: 'Лук', archBase: 15, atkSpeedMult: 0.8, mobilityMult: 0.95, pattern: 'charged_shot', range: 420, ranged: true, feature: 'заряжаемый выстрел, крит по дальним' },
-  staff: { id: 'staff', name: 'Посох', archBase: 12, atkSpeedMult: 1.0, mobilityMult: 1.0, pattern: 'projectile', range: 380, ranged: true, feature: 'снаряды от силы магии, несёт стихию' },
-  claws: { id: 'claws', name: 'Когти', archBase: 4, atkSpeedMult: 3.0, mobilityMult: 1.2, pattern: 'melee_flurry', range: 48, ranged: false, feature: 'вампиризм, комбо-множитель' },
-  whip: { id: 'whip', name: 'Кнут', archBase: 13, atkSpeedMult: 0.7, mobilityMult: 1.0, pattern: 'melee_arc', range: 130, ranged: false, feature: 'контроль толпы, притягивание' },
-  thrown: { id: 'thrown', name: 'Метательное', archBase: 12, atkSpeedMult: 1.1, mobilityMult: 1.0, pattern: 'boomerang', range: 340, ranged: true, feature: 'рикошет по нескольким целям' },
-  maul: { id: 'maul', name: 'Тяжёлый маул', archBase: 30, atkSpeedMult: 0.4, mobilityMult: 0.7, pattern: 'melee_wide', range: 100, ranged: false, feature: 'слэм по площади, стан' },
+  sword: { id: 'sword', name: 'Одноручное', archBase: 12, atkSpeedMult: 1.0, mobilityMult: 1.0, pattern: 'melee_arc', range: 105, ranged: false, feature: 'быстрые взмахи дугой' },
+  greatsword: { id: 'greatsword', name: 'Двуручное', archBase: 24, atkSpeedMult: 0.5, mobilityMult: 0.85, pattern: 'melee_wide', range: 135, ranged: false, feature: 'широкий замах, нокбэк, стаггер' },
+  daggers: { id: 'daggers', name: 'Парные клинки', archBase: 6, atkSpeedMult: 2.2, mobilityMult: 1.1, pattern: 'melee_flurry', range: 82, ranged: false, feature: 'серия в упор, буст крита' },
+  spear: { id: 'spear', name: 'Копьё', archBase: 14, atkSpeedMult: 0.9, mobilityMult: 1.0, pattern: 'melee_thrust', range: 175, ranged: false, feature: 'пробивает по линии' },
+  bow: { id: 'bow', name: 'Лук', archBase: 15, atkSpeedMult: 0.8, mobilityMult: 0.95, pattern: 'charged_shot', range: 560, ranged: true, feature: 'заряжаемый выстрел, крит по дальним' },
+  staff: { id: 'staff', name: 'Посох', archBase: 12, atkSpeedMult: 1.0, mobilityMult: 1.0, pattern: 'projectile', range: 520, ranged: true, feature: 'снаряды от силы магии, несёт стихию' },
+  claws: { id: 'claws', name: 'Когти', archBase: 4, atkSpeedMult: 3.0, mobilityMult: 1.2, pattern: 'melee_flurry', range: 78, ranged: false, feature: 'вампиризм, комбо-множитель' },
+  whip: { id: 'whip', name: 'Кнут', archBase: 13, atkSpeedMult: 0.7, mobilityMult: 1.0, pattern: 'melee_arc', range: 185, ranged: false, feature: 'контроль толпы, притягивание' },
+  thrown: { id: 'thrown', name: 'Метательное', archBase: 12, atkSpeedMult: 1.1, mobilityMult: 1.0, pattern: 'boomerang', range: 470, ranged: true, feature: 'рикошет по нескольким целям' },
+  maul: { id: 'maul', name: 'Тяжёлый маул', archBase: 30, atkSpeedMult: 0.4, mobilityMult: 0.7, pattern: 'melee_wide', range: 150, ranged: false, feature: 'слэм по площади, стан' },
 };
 
 // §43 — именной предмет оружия.

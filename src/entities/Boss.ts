@@ -44,6 +44,7 @@ export class Boss extends Phaser.Physics.Arcade.Image {
     this.dmg = stats.dmg;
     this.res = 0;
     this.phase = 1;
+    this.phaseAnnounced = false;
     this.status = createStatusState();
     this.cooldowns.clear();
     for (const a of def.attacks) this.cooldowns.set(a.kind, a.cooldown * 0.4);

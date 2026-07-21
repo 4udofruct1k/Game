@@ -24,9 +24,10 @@ export class UIScene extends Phaser.Scene {
   private bossBarBg!: Phaser.GameObjects.Rectangle;
   private bossBar!: Phaser.GameObjects.Rectangle;
   private minimap!: Phaser.GameObjects.Graphics;
-  private readonly mmR = 76; // радиус миникарты, px
-  private readonly mmC = new Phaser.Math.Vector2(94, 184); // центр миникарты на экране
+  private readonly mmR = 104; // радиус миникарты, px
+  private readonly mmC = new Phaser.Math.Vector2(122, 212); // центр миникарты на экране
   private mapExpanded = false;
+  private mmTick = 0;
   private mapCloseZone!: Phaser.GameObjects.Zone;
   private mapHint!: Phaser.GameObjects.Text;
 
@@ -158,7 +159,9 @@ export class UIScene extends Phaser.Scene {
       this.bossBar.setVisible(false);
     }
 
-    this.drawMinimap(hud);
+    // миникарта не требует 60 fps — обновляем ~20 раз/с (снимает лаги на слабых телефонах)
+    this.mmTick = (this.mmTick + 1) % 3;
+    if (this.mmTick === 0) this.drawMinimap(hud);
   }
 
   private setMapExpanded(v: boolean): void {
@@ -168,6 +171,9 @@ export class UIScene extends Phaser.Scene {
     this.minimap.setDepth(v ? 210 : 60);
     if (v) this.mapCloseZone.setInteractive();
     else this.mapCloseZone.disableInteractive();
+    // мгновенная перерисовка при переключении размера карты
+    const hud = this.registry.get('hud') as Record<string, unknown> | undefined;
+    if (hud) this.drawMinimap(hud);
   }
 
   private drawMinimap(hud: Record<string, unknown>): void {

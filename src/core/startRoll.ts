@@ -71,7 +71,7 @@ function rollWeapon(
   const native = CLASS_STATS[classId].native.filter((a) => AVAILABLE_ARCHETYPES.includes(a));
   const nativePool = native.length ? native : AVAILABLE_ARCHETYPES;
   // 70% — родной архетип, иначе любой доступный
-  const arch: WeaponArchetype = rng.chance(0.7)
+  const arch: WeaponArchetype = rng.chance(0.4)
     ? rng.pick(nativePool)
     : rng.pick(AVAILABLE_ARCHETYPES);
   const pool = weaponsForArchetype(arch);
