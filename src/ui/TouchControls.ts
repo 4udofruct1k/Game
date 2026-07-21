@@ -9,7 +9,7 @@ export class TouchControls {
   private joyThumb: Phaser.GameObjects.Arc;
   private joyPointerId = -1;
   private joyOrigin = new Phaser.Math.Vector2();
-  private readonly radius = 60;
+  private readonly radius = 72;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -22,15 +22,15 @@ export class TouchControls {
     this.joyBase = scene.add.circle(0, 0, this.radius, 0xffffff, 0.08).setStrokeStyle(2, 0xffffff, 0.25).setDepth(50).setVisible(false).setScrollFactor(0);
     this.joyThumb = scene.add.circle(0, 0, this.radius * 0.42, 0xffffff, 0.22).setDepth(51).setVisible(false).setScrollFactor(0);
 
-    // Кнопки действий (низ-право).
-    this.actionButton(w - 62, h - 70, 34, 'РЫВ', 0x3a5a8a, () => (touch.dash = true));
-    this.actionButton(w - 128, h - 108, 30, 'J', 0x2f6a3a, () => (touch.skill = true));
-    this.actionButton(w - 150, h - 48, 28, 'K', 0x7a3a8a, () => (touch.ult = true));
-    this.actionButton(w - 62, h - 148, 28, 'H', 0x2f7a5a, () => (touch.heal = true));
+    // Кнопки действий (низ-право) — крупные для пальцев.
+    this.actionButton(w - 74, h - 82, 46, 'РЫВ', 0x3a5a8a, () => (touch.dash = true));
+    this.actionButton(w - 162, h - 128, 42, 'J', 0x2f6a3a, () => (touch.skill = true));
+    this.actionButton(w - 190, h - 56, 40, 'K', 0x7a3a8a, () => (touch.ult = true));
+    this.actionButton(w - 74, h - 178, 40, 'H', 0x2f7a5a, () => (touch.heal = true));
 
     // Кнопки хаб/меню (верх-право под золотом).
-    this.actionButton(w - 40, 120, 24, 'E', 0x394b8a, () => (touch.hub = true));
-    this.actionButton(w - 40, 176, 24, '≡', 0x2a2a3f, () => (touch.menu = true));
+    this.actionButton(w - 46, 132, 30, 'E', 0x394b8a, () => (touch.hub = true));
+    this.actionButton(w - 46, 200, 30, '≡', 0x2a2a3f, () => (touch.menu = true));
 
     // Обработка джойстика.
     scene.input.on('pointerdown', this.onDown, this);

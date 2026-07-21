@@ -32,11 +32,11 @@ export class HubScene extends Phaser.Scene {
     this.buildArmorShop(360, 70);
     this.buildSmith(680, 70);
 
-    this.makeButton(width / 2 - 70, height - 40, 260, 34, '◀ В МИР (кольцо 1)', 0x2f7a3a, () => {
+    this.makeButton(width / 2 - 110, height - 54, 300, 46, '◀ В МИР (кольцо 1)', 0x2f7a3a, () => {
       run.persist();
       this.scene.start('World');
     });
-    this.makeButton(20, height - 40, 130, 34, 'Меню (статы)', 0x2a2a3f, () => {
+    this.makeButton(20, height - 54, 150, 46, 'Меню (статы)', 0x2a2a3f, () => {
       this.scene.launch('Menu', { from: 'Hub' });
       this.scene.pause();
     });
@@ -169,8 +169,8 @@ export class HubScene extends Phaser.Scene {
   }
 
   private makeButton(x: number, y: number, w: number, h: number, label: string, color: number, cb: () => void): Phaser.GameObjects.Container {
-    const bg = this.add.rectangle(0, 0, w, h, color).setStrokeStyle(1, 0x555577);
-    const txt = this.add.text(0, 0, label, { fontFamily: 'system-ui', fontSize: '12px', color: '#fff' }).setOrigin(0.5);
+    const bg = this.add.rectangle(0, 0, w, h, color).setStrokeStyle(2, 0x6a6a9a);
+    const txt = this.add.text(0, 0, label, { fontFamily: 'system-ui', fontSize: h >= 40 ? '15px' : '12px', color: '#fff' }).setOrigin(0.5);
     const c = this.add.container(x + w / 2, y + h / 2, [bg, txt]);
     c.setSize(w, h).setInteractive({ useHandCursor: true });
     c.on('pointerover', () => bg.setFillStyle(Phaser.Display.Color.IntegerToColor(color).lighten(12).color));
