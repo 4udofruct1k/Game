@@ -1,9 +1,24 @@
 import Phaser from 'phaser';
+import { MOBS_BY_RING } from '../data/mobs';
+import { BOSSES_BY_RING } from '../data/bosses';
 
 // Генерация placeholder-текстур (круги/квадраты/кольца) — тинтуются на инстансах.
 export class BootScene extends Phaser.Scene {
   constructor() {
     super('Boot');
+  }
+
+  preload(): void {
+    // спрайты вырезаны из арт-борды (public/sprites). Если файла нет — фолбэк на круг.
+    this.load.image('hero', 'sprites/hero.png');
+    for (const ring of Object.values(MOBS_BY_RING)) {
+      for (const m of ring) this.load.image('mob_' + m.id, 'sprites/mob_' + m.id + '.png');
+    }
+    for (const b of Object.values(BOSSES_BY_RING)) {
+      this.load.image('boss_' + b.id, 'sprites/boss_' + b.id + '.png');
+    }
+    // не валимся, если какой-то спрайт не загрузился
+    this.load.on('loaderror', () => {});
   }
 
   create(): void {

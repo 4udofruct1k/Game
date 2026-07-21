@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { Run } from '../core/run';
 import { GAMEPLAY } from '../data/balance';
 import { COLORS } from '../data/theme';
+import { applySprite } from './sprites';
 
 export class Player extends Phaser.Physics.Arcade.Image {
   run: Run;
@@ -20,10 +21,8 @@ export class Player extends Phaser.Physics.Arcade.Image {
     this.run = run;
     scene.add.existing(this);
     scene.physics.add.existing(this);
-    this.setTint(COLORS.player);
     const r = GAMEPLAY.playerRadius;
-    this.setDisplaySize(r * 2, r * 2);
-    (this.body as Phaser.Physics.Arcade.Body).setCircle(32, 0, 0);
+    applySprite(this, 'hero', COLORS.player, r, 4.6);
     (this.body as Phaser.Physics.Arcade.Body).setDamping(true);
     const s = run.stats();
     this.baseSpeed = s.moveSpeed;

@@ -7,6 +7,7 @@ import {
   isDisabled,
   type StatusState,
 } from '../core/statusEngine';
+import { applySprite } from './sprites';
 
 export interface BossContext {
   playerPos(): Phaser.Math.Vector2;
@@ -49,9 +50,7 @@ export class Boss extends Phaser.Physics.Arcade.Image {
     this.globalGate = 800;
     this.enableBody(true, x, y, true, true);
     this.setActive(true).setVisible(true);
-    this.setTint(def.color);
-    this.setDisplaySize(def.radius * 2, def.radius * 2);
-    (this.body as Phaser.Physics.Arcade.Body).setCircle(32, 0, 0);
+    applySprite(this, 'boss_' + def.id, def.color, def.radius, 3.6);
     (this.body as Phaser.Physics.Arcade.Body).setImmovable(true);
   }
 
