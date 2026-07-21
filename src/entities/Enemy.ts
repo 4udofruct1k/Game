@@ -8,6 +8,7 @@ import {
   isDisabled,
   type StatusState,
 } from '../core/statusEngine';
+import { applySprite } from './sprites';
 
 export interface EnemyContext {
   playerPos(): Phaser.Math.Vector2;
@@ -78,10 +79,8 @@ export class Enemy extends Phaser.Physics.Arcade.Image {
     this.wanderAng = Math.random() * Math.PI * 2;
     this.enableBody(true, x, y, true, true);
     this.setActive(true).setVisible(true);
-    this.setTint(def.color);
     const r = def.radius * (elite ? 1.5 : 1);
-    this.setDisplaySize(r * 2, r * 2);
-    (this.body as Phaser.Physics.Arcade.Body).setCircle(32, 0, 0);
+    applySprite(this, 'mob_' + def.id, def.color, r, 3.7);
   }
 
   applyDamage(amount: number): void {
