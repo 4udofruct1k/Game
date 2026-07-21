@@ -26,6 +26,7 @@ export class Projectile extends Phaser.Physics.Arcade.Image {
     scene.add.existing(this);
     scene.physics.add.existing(this);
     this.setActive(false).setVisible(false);
+    this.disableBody(true, true); // тело выключено до fire() — не участвует в overlap
   }
 
   fire(

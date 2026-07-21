@@ -20,8 +20,13 @@ import { touch, consumeTouch } from '../core/touchInput';
 // Радиус, за которым мобы (не боссы) деспавнятся и переспавниваются ближе к игроку.
 const CULL_RANGE = 1500;
 
-// Цвета земли биомов по кольцам (индекс = кольцо, 0 = хаб).
-const BIOME_GROUND = [0x1c2233, 0x14301c, 0x1b2a1e, 0x2a1a14, 0x18242f, 0x1a1026];
+// Цвета земли биомов по кольцам (индекс = кольцо, 0 = хаб) — насыщенные, контрастные.
+const BIOME_GROUND = [0x2a3a5c, 0x2f7a42, 0x4a6a2e, 0x7a3e20, 0x2f6088, 0x4a2274];
+// Сила мобов (спавнятся редко, поэтому крепче) и множители награды.
+const MOB_HP_MUL = 2.6;
+const MOB_DMG_MUL = 1.5;
+const MOB_LOOT_MUL = 2.6;
+const MAX_MOBS = 2; // одновременно на арене (вне босса)
 
 interface Pickup {
   x: number;
@@ -71,6 +76,7 @@ export class WorldScene extends Phaser.Scene {
   private pickups: Pickup[] = [];
   private lastRing = 0;
   private bossColliders: Phaser.Physics.Arcade.Collider[] = [];
+  private groundTex!: Phaser.GameObjects.TileSprite;
   private dmgPool: Phaser.GameObjects.Text[] = [];
   private dmgIdx = 0;
   private lastDmgAt = 0;
@@ -94,6 +100,13 @@ export class WorldScene extends Phaser.Scene {
     this.energy = ENERGY_MAX;
 
     this.drawGround();
+    // текстура-шум земли (скроллится с камерой) — даёт «фактуру» биому
+    this.groundTex = this.add
+      .tileSprite(0, 0, this.scale.width, this.scale.height, 'noise')
+      .setOrigin(0)
+      .setScrollFactor(0)
+      .setDepth(-8)
+      .setAlpha(0.09);
 
     this.enemyGroup = this.physics.add.group();
     this.pProjGroup = this.physics.add.group();
@@ -108,7 +121,8 @@ export class WorldScene extends Phaser.Scene {
 
     this.cameras.main.setBounds(0, 0, GAMEPLAY.worldRadius * 2, GAMEPLAY.worldRadius * 2);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
-    this.cameras.main.setBackgroundColor(0x0a0a12);
+    this.cameras.main.setBackgroundColor(0x120c14);
+    this.cameras.main.setZoom(1.55); // меньше FOV — ближе к персонажу
 
     this.setupInput();
     this.setupOverlaps();
@@ -198,6 +212,10 @@ export class WorldScene extends Phaser.Scene {
     this.handleMovement(dtMs);
     this.handleTouchActions();
     this.player.tick(dtMs);
+
+    // текстура земли скроллится с камерой
+    const cam = this.cameras.main;
+    this.groundTex.setTilePosition(cam.scrollX, cam.scrollY);
 
     // энергия/реген/скиллы
     this.energy = Math.min(ENERGY_MAX, this.energy + ENERGY_REGEN * dt);
@@ -579,7 +597,7 @@ export class WorldScene extends Phaser.Scene {
 
   // ---------- Столкновения ----------
   private onPlayerProjHitEnemy(proj: Projectile, enemy: Enemy): void {
-    if (!proj.active || !enemy.active || proj.payload.owner !== 'player') return;
+    if (!proj.active || !enemy.active || !proj.payload || proj.payload.owner !== 'player') return;
     if (proj.hitSet.has(enemy as unknown as number)) return;
     const input = (proj as Projectile & { hitInput?: HitInput }).hitInput;
     if (input) this.dealToEnemy(enemy, input);
@@ -589,7 +607,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private onEnemyProjHitPlayer(proj: Projectile): void {
-    if (!proj.active || proj.payload.owner !== 'enemy') return;
+    if (!proj.active || !proj.payload || proj.payload.owner !== 'enemy') return;
     this.hitPlayer(proj.payload.raw, proj.payload.element);
     proj.kill();
   }
@@ -621,11 +639,12 @@ export class WorldScene extends Phaser.Scene {
       if (ring >= 1) this.flashBanner(`Кольцо ${ring} · ${BIOME_NAMES[ring]}`, 2500);
     }
 
+    // мобы спавнятся редко и по 1 (макс MAX_MOBS одновременно); во время босса — не спавнятся
     this.spawnTimer -= dt;
     const activeMobs = this.enemies.filter((e) => e.active).length;
-    if (ring >= 1 && !this.boss && this.spawnTimer <= 0 && activeMobs < 16) {
-      this.spawnTimer = 1.1;
-      this.spawnWave(ring);
+    if (ring >= 1 && !this.boss && this.spawnTimer <= 0 && activeMobs < MAX_MOBS) {
+      this.spawnTimer = Phaser.Math.FloatBetween(2.4, 4.0);
+      this.spawnWave(ring, 1);
     }
 
     // босс текущего кольца (если ещё не убит и не активен)
@@ -639,14 +658,13 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  private spawnWave(ring: number): void {
+  private spawnWave(ring: number, count = 1): void {
     const pool = MOBS_BY_RING[ring] ?? MOBS_BY_RING[1];
-    const count = Phaser.Math.Between(2, 4);
     for (let i = 0; i < count; i++) {
       const def = Phaser.Utils.Array.GetRandom(pool);
       const pos = this.randomSpawnPos();
       if (!pos) continue;
-      this.spawnEnemy(def, pos.x, pos.y, ring, def.ai === 'swarm' && Math.random() < 0.3);
+      this.spawnEnemy(def, pos.x, pos.y, ring, Math.random() < 0.18);
     }
   }
 
@@ -675,11 +693,11 @@ export class WorldScene extends Phaser.Scene {
       x,
       y,
       {
-        hp: base.hp * def.hpMult * scale * eliteMul.hp,
-        dmg: base.dmg * def.dmgMult * scale * eliteMul.dmg,
+        hp: base.hp * def.hpMult * scale * eliteMul.hp * MOB_HP_MUL,
+        dmg: base.dmg * def.dmgMult * scale * eliteMul.dmg * MOB_DMG_MUL,
         armor: base.armor,
-        xp: base.xp * eliteMul.loot,
-        gold: base.gold * eliteMul.loot,
+        xp: base.xp * eliteMul.loot * MOB_LOOT_MUL,
+        gold: base.gold * eliteMul.loot * MOB_LOOT_MUL,
       },
       elite,
     );
@@ -692,7 +710,9 @@ export class WorldScene extends Phaser.Scene {
     const def = BOSSES_BY_RING[ring];
     this.activeBossRing = ring;
     const ang = Phaser.Math.Angle.Between(this.center.x, this.center.y, this.player.x, this.player.y);
-    const r = ringOuterRadius(ring) - 120;
+    const pd = Phaser.Math.Distance.Between(this.center.x, this.center.y, this.player.x, this.player.y);
+    // босс появляется чуть впереди игрока (радиально), но не дальше внешнего края кольца
+    const r = Math.min(ringOuterRadius(ring) - 120, pd + 620);
     const bx = this.center.x + Math.cos(ang) * r;
     const by = this.center.y + Math.sin(ang) * r;
     this.boss = new Boss(this);
@@ -705,7 +725,7 @@ export class WorldScene extends Phaser.Scene {
     this.boss.setDepth(7);
     const c1 = this.physics.add.overlap(this.pProjGroup, this.boss, (proj) => {
       const p = proj as Projectile;
-      if (!p.active || p.payload.owner !== 'player') return;
+      if (!p.active || !p.payload || p.payload.owner !== 'player') return;
       const input = (p as Projectile & { hitInput?: HitInput }).hitInput;
       if (input) this.dealToBoss(input);
       p.payload.pierce -= 1;

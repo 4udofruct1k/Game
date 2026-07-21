@@ -51,6 +51,8 @@ export class Player extends Phaser.Physics.Arcade.Image {
       dir.normalize();
       this.facing.copy(dir);
       body.setVelocity(dir.x * this.baseSpeed, dir.y * this.baseSpeed);
+      // зеркалим модельку в сторону бега (право/лево)
+      if (Math.abs(dir.x) > 0.1) this.setFlipX(dir.x < 0);
     } else {
       body.setVelocity(0, 0);
     }

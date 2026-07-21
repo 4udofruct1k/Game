@@ -58,19 +58,19 @@ export const SET_BONUS_6_MAIN = 0.25;
 
 // Общие геймплей-тюнинги среза (не из спеки напрямую — разумные дефолты).
 export const GAMEPLAY = {
-  dashSpeed: 720, // px/с
-  dashDuration: 170, // мс
+  dashSpeed: 1200, // px/с
+  dashDuration: 175, // мс
   dashCooldown: 900, // мс
   dashIFrames: 190, // мс неуязвимости на рывке
   playerRadius: 13,
-  // Крупная карта: биомы-кольца ощутимо большие, до края бежать долго.
-  worldRadius: 3600, // радиус круглой карты
-  hubRadius: 520, // радиус безопасного хаба
+  // Очень крупная карта: биомы-кольца ~×10, до края бежать долго. Хаб — прежний.
+  worldRadius: 31000, // радиус круглой карты
+  hubRadius: 520, // радиус безопасного хаба (не меняем)
   ring1Inner: 640,
-  ring1Outer: 3200,
-  projectileSpeed: 620,
-  enemyProjectileSpeed: 320,
-  moveSpeedScale: 3.4, // множитель перевода базовой скорости в px/с
+  ring1Outer: 6600,
+  projectileSpeed: 700,
+  enemyProjectileSpeed: 360,
+  moveSpeedScale: 6.0, // множитель перевода базовой скорости в px/с (компенсирует масштаб)
 };
 
 // 5 концентрических колец между хабом и краем мира.

@@ -27,6 +27,7 @@ export class BootScene extends Phaser.Scene {
     this.makeSquare('square', 64);
     this.makeRing('ring', 128, 6);
     this.makeTriangle('triangle', 48);
+    this.makeNoise('noise', 160);
 
     this.scene.start('StartRoll');
   }
@@ -51,6 +52,22 @@ export class BootScene extends Phaser.Scene {
     const g = this.add.graphics();
     g.lineStyle(thickness, 0xffffff, 1);
     g.strokeCircle(size / 2, size / 2, size / 2 - thickness);
+    g.generateTexture(key, size, size);
+    g.destroy();
+  }
+
+  // Шум для текстуры земли биомов (тайлится, скроллится с камерой).
+  private makeNoise(key: string, size: number): void {
+    const g = this.add.graphics();
+    const dots = Math.floor(size * size * 0.14);
+    for (let i = 0; i < dots; i++) {
+      const x = Math.floor(Math.random() * size);
+      const y = Math.floor(Math.random() * size);
+      const light = Math.random() > 0.5;
+      g.fillStyle(light ? 0xffffff : 0x000000, 0.5);
+      const s = Math.random() > 0.85 ? 2 : 1;
+      g.fillRect(x, y, s, s);
+    }
     g.generateTexture(key, size, size);
     g.destroy();
   }
