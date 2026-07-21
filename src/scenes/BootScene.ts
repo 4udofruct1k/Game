@@ -28,8 +28,39 @@ export class BootScene extends Phaser.Scene {
     this.makeRing('ring', 128, 6);
     this.makeTriangle('triangle', 48);
     this.makeNoise('noise', 160);
+    // тайлы земли биомов: base, dark, light, accent (индекс = кольцо, 0 = хаб)
+    const P: [number, number, number, number][] = [
+      [0x2a3a5c, 0x1e2a44, 0x40547c, 0x516896], // хаб — камень
+      [0x2f7a42, 0x236032, 0x49a65c, 0x6ac07a], // равнины — трава
+      [0x3d5a30, 0x2a4222, 0x577a3a, 0x7a8a34], // топи
+      [0x5c2e1c, 0x3e2014, 0x7e4022, 0xe0742a], // пустоши — угли
+      [0x3a6088, 0x2c4a6c, 0x6fa0cc, 0xbfe4ff], // мёрзлые руины
+      [0x3c1c5e, 0x281044, 0x5c2e8a, 0xd83ad0], // бездна
+    ];
+    P.forEach((c, i) => this.makeBiomeTile('biome' + i, c[0], c[1], c[2], c[3]));
 
     this.scene.start('StartRoll');
+  }
+
+  // Тайл земли биома: база + тёмные кляксы + светлые/акцентные крапинки (тайлится).
+  private makeBiomeTile(key: string, base: number, dark: number, light: number, accent: number): void {
+    const size = 128;
+    const g = this.add.graphics();
+    g.fillStyle(base, 1).fillRect(0, 0, size, size);
+    const rnd = (n: number) => Math.floor(Math.random() * n);
+    // тёмные кляксы
+    for (let i = 0; i < 26; i++) g.fillStyle(dark, 0.5).fillCircle(rnd(size), rnd(size), 4 + rnd(9));
+    // светлые пятна
+    for (let i = 0; i < 22; i++) g.fillStyle(light, 0.45).fillCircle(rnd(size), rnd(size), 3 + rnd(6));
+    // мелкие крапинки (детализация)
+    for (let i = 0; i < 320; i++) {
+      g.fillStyle(Math.random() > 0.5 ? light : dark, 0.5);
+      g.fillRect(rnd(size), rnd(size), 1, 1);
+    }
+    // редкие акценты (угли/иней/магия)
+    for (let i = 0; i < 14; i++) g.fillStyle(accent, 0.6).fillCircle(rnd(size), rnd(size), 1 + rnd(2));
+    g.generateTexture(key, size, size);
+    g.destroy();
   }
 
   private makeCircle(key: string, size: number, alpha = 1): void {
