@@ -14,6 +14,7 @@ import { applyElement, vulnMult } from '../core/statusEngine';
 import { grantKillReward } from '../core/economy';
 import { REACTIONS, type Element } from '../data/elements';
 import { CLASS_STATS } from '../data/classes';
+import { touch, consumeTouch } from '../core/touchInput';
 
 interface Telegraph {
   x: number;
@@ -163,6 +164,7 @@ export class WorldScene extends Phaser.Scene {
     this.run.addPlaytime(dtMs);
 
     this.handleMovement(dtMs);
+    this.handleTouchActions();
     this.player.tick(dtMs);
 
     // энергия/реген/скиллы
@@ -214,17 +216,58 @@ export class WorldScene extends Phaser.Scene {
     if (this.keys.S.isDown) dir.y += 1;
     if (this.keys.A.isDown) dir.x -= 1;
     if (this.keys.D.isDown) dir.x += 1;
-    // прицел — к указателю
-    const ptr = this.input.activePointer;
-    const world = this.cameras.main.getWorldPoint(ptr.x, ptr.y);
-    const aim = new Phaser.Math.Vector2(world.x - this.player.x, world.y - this.player.y);
-    if (aim.lengthSq() > 4) this.player.facing.copy(aim.normalize());
+    // сенсорный стик
+    if (touch.moving) {
+      dir.x += touch.moveX;
+      dir.y += touch.moveY;
+    }
+    // прицел по умолчанию — к указателю (десктоп); авто-прицел по врагу — в autoAttack
+    if (!touch.enabled) {
+      const ptr = this.input.activePointer;
+      const world = this.cameras.main.getWorldPoint(ptr.x, ptr.y);
+      const aim = new Phaser.Math.Vector2(world.x - this.player.x, world.y - this.player.y);
+      if (aim.lengthSq() > 4) this.player.facing.copy(aim.normalize());
+    } else if (dir.lengthSq() > 0) {
+      this.player.facing.copy(dir.clone().normalize());
+    }
     this.player.handleMovement(dir, dtMs);
 
     // grace-таймер выхода из хаба
     const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.center.x, this.center.y);
     if (d < GAMEPLAY.hubRadius) this.inHubGrace = 400;
     else if (this.inHubGrace > 0) this.inHubGrace -= dtMs;
+  }
+
+  private handleTouchActions(): void {
+    if (consumeTouch('dash')) this.player.tryDash();
+    if (consumeTouch('skill')) this.castSkill();
+    if (consumeTouch('ult')) this.castUlt();
+    if (consumeTouch('heal')) this.useHeal();
+    if (consumeTouch('hub')) this.tryEnterHub();
+    if (consumeTouch('menu')) this.openMenu();
+  }
+
+  // Направление на ближайшего врага/босса в радиусе (для авто-прицела).
+  private nearestTargetDir(range: number): Phaser.Math.Vector2 | null {
+    let best: { x: number; y: number } | null = null;
+    let bestD = range;
+    for (const e of this.enemies) {
+      if (!e.active) continue;
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
+      if (d < bestD) {
+        bestD = d;
+        best = { x: e.x, y: e.y };
+      }
+    }
+    if (this.boss && this.boss.active) {
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.boss.x, this.boss.y);
+      if (d < bestD) {
+        bestD = d;
+        best = { x: this.boss.x, y: this.boss.y };
+      }
+    }
+    if (!best) return null;
+    return new Phaser.Math.Vector2(best.x - this.player.x, best.y - this.player.y).normalize();
   }
 
   private regenPlayer(dt: number): void {
@@ -246,6 +289,11 @@ export class WorldScene extends Phaser.Scene {
     const arch = WEAPON_ARCHETYPES[this.run.loadout.weapon.archetype];
     const period = 1000 / (arch.atkSpeedMult && s.atkSpeedMult ? s.atkSpeedMult : 1);
     this.player.attackCd = Math.max(120, period);
+
+    // авто-прицел по ближайшему врагу (обязателен для тача, удобен и на десктопе)
+    const aim = this.nearestTargetDir(arch.ranged ? arch.range : arch.range + 40);
+    if (aim) this.player.facing.copy(aim);
+    else if (touch.enabled) return; // на тач-устройстве без цели не тратим атаку
 
     if (arch.ranged) {
       this.rangedAttack();

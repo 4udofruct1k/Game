@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { COLORS } from '../data/theme';
 import { HEALS } from '../data/items';
+import { TouchControls } from '../ui/TouchControls';
+import { touch } from '../core/touchInput';
 
 // HUD-оверлей. Читает состояние из registry['hud'], которое пишет WorldScene.
 export class UIScene extends Phaser.Scene {
@@ -72,6 +74,13 @@ export class UIScene extends Phaser.Scene {
     this.bossName = this.add.text(w / 2, 30, '', { fontFamily: 'system-ui', fontSize: '14px', color: '#ff9a9a' }).setOrigin(0.5);
     this.bossBarBg = this.add.rectangle(w / 2, 50, 420, 12, 0x3a1518).setOrigin(0.5).setVisible(false);
     this.bossBar = this.add.rectangle(w / 2 - 210, 50, 420, 12, 0xd64550).setOrigin(0, 0.5).setVisible(false);
+
+    // сенсорные контролы — на тач-устройствах (или ?touch=1 для отладки)
+    const forceTouch = typeof location !== 'undefined' && new URLSearchParams(location.search).has('touch');
+    if (this.sys.game.device.input.touch || forceTouch) {
+      touch.enabled = true;
+      new TouchControls(this);
+    }
   }
 
   update(): void {
