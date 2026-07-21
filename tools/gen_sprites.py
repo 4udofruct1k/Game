@@ -1,33 +1,49 @@
 #!/usr/bin/env python3
-"""Процедурный генератор пиксель-арт спрайтов существ.
-Чистые силуэты, высокий контраст, жирный тёмный контур.
-Ничего не берёт из арт-борды — рисует с нуля по семействам/палитрам.
+"""Процедурный генератор пиксель-арт спрайтов: злобные существа + иконки оружия.
+Высокая детализация, объёмная тень (тёмный кант + верхний хайлайт),
+клыки/когти/шипы/светящиеся глаза. Ничего не берётся из арт-борды.
 """
 import os
+import random
 from PIL import Image
 
 OUT = os.path.join(os.path.dirname(__file__), '..', 'public', 'sprites')
 os.makedirs(OUT, exist_ok=True)
 
-# ---- палитры (base, shade, light, accent) в RGB ----
-PAL = {
-    'green':  ((74, 168, 92),  (40, 110, 56),  (150, 214, 120), (230, 210, 90)),
-    'bog':    ((104, 150, 70), (60, 96, 42),   (168, 196, 96),  (176, 90, 190)),
-    'fire':   ((228, 96, 40),  (150, 44, 24),  (255, 190, 70),  (255, 240, 120)),
-    'ice':    ((96, 176, 224), (44, 104, 168), (198, 234, 255), (255, 255, 255)),
-    'void':   ((120, 70, 190), (62, 30, 110),  (196, 130, 255), (236, 90, 220)),
-    'bone':   ((214, 210, 190),(150, 146, 128),(244, 242, 230), (170, 60, 60)),
-    'demon':  ((176, 52, 52),  (104, 26, 30),  (232, 110, 90),  (255, 210, 60)),
-    'gray':   ((150, 156, 172),(92, 98, 116),  (206, 212, 226), (120, 200, 240)),
-    'rat':    ((150, 120, 96), (96, 74, 56),   (200, 176, 150), (200, 90, 90)),
-    'ghost':  ((186, 214, 232),(120, 156, 186),(238, 248, 255), (150, 220, 255)),
-    'hero':   ((70, 130, 210), (36, 78, 150),  (150, 196, 255), (255, 214, 84)),
-}
-OUTLINE = (22, 20, 30)
-EYE = (250, 250, 255)
-PUPIL = (30, 20, 30)
+OUTLINE = (18, 14, 22)
+BONE = (232, 228, 210)
+FANG = (244, 242, 232)
 
-# ---- сетка-рисовалка ----
+
+def mix(a, b, t):
+    return tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+def dark(c, f):
+    return tuple(round(x * f) for x in c)
+
+def lite(c, f):
+    return tuple(min(255, round(x + (255 - x) * f)) for x in c)
+
+
+# палитры: (base, shade, light, accent-свечение)
+PAL = {
+    'green':  ((88, 150, 70),  (44, 88, 40),   (150, 200, 110), (240, 70, 60)),
+    'bog':    ((92, 122, 60),  (48, 70, 34),   (150, 170, 90),  (180, 240, 90)),
+    'fire':   ((196, 66, 30),  (104, 26, 18),  (255, 170, 60),  (255, 240, 130)),
+    'ice':    ((120, 172, 210),(56, 96, 150),  (210, 238, 255), (150, 240, 255)),
+    'void':   ((92, 52, 140),  (44, 22, 78),   (168, 110, 230), (236, 80, 220)),
+    'bone':   ((206, 200, 178),(120, 116, 100),(240, 238, 224), (180, 40, 40)),
+    'demon':  ((150, 42, 40),  (78, 18, 22),   (214, 90, 70),   (255, 200, 60)),
+    'gray':   ((120, 128, 144),(66, 72, 88),   (196, 204, 220), (255, 90, 60)),
+    'rat':    ((120, 96, 78),  (68, 52, 42),   (176, 150, 128), (220, 60, 60)),
+    'ghost':  ((150, 186, 208),(84, 120, 154), (224, 240, 255), (140, 240, 220)),
+    'hero':   ((70, 120, 200), (34, 66, 130),  (150, 196, 255), (255, 214, 84)),
+    'steel':  ((150, 158, 172),(80, 86, 100),  (224, 230, 244), (120, 200, 255)),
+    'gold':   ((208, 168, 66), (128, 96, 30),  (255, 232, 150), (255, 255, 210)),
+    'wood':   ((132, 92, 52),  (78, 52, 28),   (186, 140, 90),  (150, 240, 120)),
+}
+
+
 class Grid:
     def __init__(self, n):
         self.n = n
@@ -35,13 +51,17 @@ class Grid:
 
     def set(self, x, y, c):
         if 0 <= x < self.n and 0 <= y < self.n and c is not None:
-            self.px[y][x] = c
+            self.px[int(y)][int(x)] = c
+
+    def get(self, x, y):
+        if 0 <= x < self.n and 0 <= y < self.n:
+            return self.px[int(y)][int(x)]
+        return None
 
     def ellipse(self, cx, cy, rx, ry, c):
-        for y in range(int(cy - ry), int(cy + ry) + 1):
-            for x in range(int(cx - rx), int(cx + rx) + 1):
-                dx = (x - cx) / max(rx, 0.01)
-                dy = (y - cy) / max(ry, 0.01)
+        for y in range(int(cy - ry) - 1, int(cy + ry) + 2):
+            for x in range(int(cx - rx) - 1, int(cx + rx) + 2):
+                dx = (x - cx) / max(rx, 0.01); dy = (y - cy) / max(ry, 0.01)
                 if dx * dx + dy * dy <= 1.0:
                     self.set(x, y, c)
 
@@ -54,291 +74,560 @@ class Grid:
         xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
         for y in range(int(min(ys)), int(max(ys)) + 1):
             for x in range(int(min(xs)), int(max(xs)) + 1):
-                if self._in_tri((x, y), pts):
+                if self._in(( x, y), pts):
                     self.set(x, y, c)
 
+    def line(self, x0, y0, x1, y1, c, w=1):
+        steps = int(max(abs(x1 - x0), abs(y1 - y0))) + 1
+        for i in range(steps + 1):
+            t = i / steps
+            x = x0 + (x1 - x0) * t; y = y0 + (y1 - y0) * t
+            self.ellipse(x, y, w / 2, w / 2, c)
+
     @staticmethod
-    def _in_tri(p, t):
-        def sign(a, b, c):
+    def _in(p, t):
+        def s(a, b, c):
             return (a[0]-c[0])*(b[1]-c[1]) - (b[0]-c[0])*(a[1]-c[1])
-        d1 = sign(p, t[0], t[1]); d2 = sign(p, t[1], t[2]); d3 = sign(p, t[2], t[0])
-        neg = (d1 < 0) or (d2 < 0) or (d3 < 0)
-        pos = (d1 > 0) or (d2 > 0) or (d3 > 0)
-        return not (neg and pos)
+        d1 = s(p, t[0], t[1]); d2 = s(p, t[1], t[2]); d3 = s(p, t[2], t[0])
+        return not (((d1 < 0) or (d2 < 0) or (d3 < 0)) and ((d1 > 0) or (d2 > 0) or (d3 > 0)))
 
     def mirror_lr(self):
-        # правую половину = зеркало левой
         for y in range(self.n):
             for x in range(self.n // 2):
                 self.px[y][self.n - 1 - x] = self.px[y][x]
 
-    def add_outline(self):
+    def bbox(self):
+        xs = []; ys = []
+        for y in range(self.n):
+            for x in range(self.n):
+                if self.px[y][x] is not None:
+                    xs.append(x); ys.append(y)
+        if not xs:
+            return (0, 0, self.n, self.n)
+        return (min(xs), min(ys), max(xs), max(ys))
+
+    def shade(self):
+        # объём: тёмный внутренний кант + лёгкий верхний хайлайт
         n = self.n
-        out = [[self.px[y][x] for x in range(n)] for y in range(n)]
+        _, y0, _, y1 = self.bbox()
+        h = max(1, y1 - y0)
+        src = [row[:] for row in self.px]
+        for y in range(n):
+            for x in range(n):
+                c = src[y][x]
+                if c is None:
+                    continue
+                # кол-во пустых соседей → близость к краю
+                empt = 0
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        if src[(y+dy) % n][(x+dx) % n] is None if 0 <= y+dy < n and 0 <= x+dx < n else True:
+                            empt += 1
+                nc = c
+                if empt >= 3:
+                    nc = mix(nc, dark(nc, 0.5), 0.55)     # жёсткий кант
+                elif empt >= 1:
+                    nc = mix(nc, dark(nc, 0.6), 0.30)
+                # верхний хайлайт
+                fy = (y - y0) / h
+                if fy < 0.32 and empt < 3:
+                    nc = mix(nc, lite(nc, 0.6), 0.22 * (1 - fy / 0.32))
+                elif fy > 0.7:
+                    nc = mix(nc, dark(nc, 0.7), 0.18)
+                self.px[y][x] = nc
+
+    def outline(self):
+        n = self.n
+        out = [row[:] for row in self.px]
         for y in range(n):
             for x in range(n):
                 if self.px[y][x] is None:
-                    near = False
                     for dy in (-1, 0, 1):
                         for dx in (-1, 0, 1):
-                            xx, yy = x + dx, y + dy
-                            if 0 <= xx < n and 0 <= yy < n and self.px[yy][xx] is not None \
-                               and self.px[yy][xx] != OUTLINE:
-                                near = True
-                    if near:
-                        out[y][x] = OUTLINE
+                            xx, yy = x+dx, y+dy
+                            if 0 <= xx < n and 0 <= yy < n and self.px[yy][xx] is not None:
+                                out[y][x] = OUTLINE
         self.px = out
 
     def render(self, scale):
         n = self.n
         img = Image.new('RGBA', (n * scale, n * scale), (0, 0, 0, 0))
-        px = img.load()
+        p = img.load()
         for y in range(n):
             for x in range(n):
                 c = self.px[y][x]
                 if c is None:
                     continue
-                r, g, b = c
                 for sy in range(scale):
                     for sx in range(scale):
-                        px[x * scale + sx, y * scale + sy] = (r, g, b, 255)
+                        p[x*scale+sx, y*scale+sy] = (c[0], c[1], c[2], 255)
         return img
 
 
-def eyes(g, cy, spread, r=1, glow=None):
+# ---- декоративные примитивы (глаза/клыки/когти/шипы/рога) ----
+def eyes(g, cy, spread, r, glow, brow=True):
     n = g.n; cx = n // 2
     for sx in (-1, 1):
         ex = cx + sx * spread
-        g.ellipse(ex, cy, r + 0.6, r + 0.6, glow or EYE)
-        g.ellipse(ex, cy, max(r - 0.4, 0.6), max(r - 0.4, 0.6), PUPIL)
+        g.ellipse(ex, cy, r + 1, r + 1, dark(glow, 0.3))
+        g.ellipse(ex, cy, r, r, glow)
+        g.ellipse(ex, cy, max(r*0.5, 0.7), max(r*0.5, 0.7), (255, 255, 255))
+        g.set(ex, cy, (10, 8, 12))
+        if brow:  # злая бровь (диагональ к центру)
+            g.line(ex - sx*(r+1), cy - r - 2, ex + sx*(r+1), cy - 1, dark(glow, 0.2), 1.4)
 
+def fangs_down(g, y, x0, x1, n=4, col=FANG, h=3):
+    step = (x1 - x0) / n
+    for i in range(n):
+        x = x0 + step * (i + 0.5)
+        g.tri([(x - step*0.4, y), (x + step*0.4, y), (x, y + h)], col)
 
-# ---- семейства существ (рисуют на сетке n, палитра p) ----
-def draw_humanoid(g, p, horns=False, ears=False, hood=False, staff=False):
+def teeth_row(g, y, x0, x1, n=5, col=FANG):
+    step = (x1 - x0) / n
+    for i in range(n):
+        x = x0 + step * i
+        g.rect(x, y, x + step*0.6, y + 1.5, col)
+
+def horns(g, hy, spread, col):
     n = g.n; cx = n // 2
-    base, shade, light, acc = p
-    body_top = int(n * 0.42)
-    # тело
-    g.ellipse(cx, int(n * 0.66), n * 0.24, n * 0.22, base)
-    g.rect(cx - int(n*0.16), int(n*0.5), cx + int(n*0.16), int(n*0.78), base)
-    # ноги
-    g.rect(cx - int(n*0.14), int(n*0.78), cx - int(n*0.04), int(n*0.9), shade)
-    g.rect(cx + int(n*0.04), int(n*0.78), cx + int(n*0.14), int(n*0.9), shade)
-    # руки
-    g.ellipse(cx - int(n*0.2), int(n*0.6), n*0.06, n*0.1, shade)
-    # голова
-    hy = int(n * 0.32)
-    if hood:
-        g.ellipse(cx, hy, n * 0.2, n * 0.2, shade)
-        g.ellipse(cx, hy + 2, n * 0.14, n * 0.14, (14, 12, 22))
-        eyes(g, hy + 1, int(n*0.06), 1, acc)
-    else:
-        g.ellipse(cx, hy, n * 0.17, n * 0.17, light)
-        eyes(g, hy, int(n*0.07), 1.4)
-    if ears:
-        g.tri([(cx - int(n*0.16), hy - 2), (cx - int(n*0.28), hy - int(n*0.1)), (cx - int(n*0.13), hy + 2)], base)
-        g.tri([(cx + int(n*0.16), hy - 2), (cx + int(n*0.28), hy - int(n*0.1)), (cx + int(n*0.13), hy + 2)], base)
-    if horns:
-        g.tri([(cx - int(n*0.1), hy - int(n*0.12)), (cx - int(n*0.2), hy - int(n*0.32)), (cx - int(n*0.03), hy - int(n*0.14))], acc)
-    if staff:
-        g.rect(cx + int(n*0.22), int(n*0.3), cx + int(n*0.25), int(n*0.82), (120, 96, 60))
-        g.ellipse(cx + int(n*0.235), int(n*0.28), n*0.06, n*0.06, acc)
-    # блик на теле
-    g.ellipse(cx - int(n*0.08), int(n*0.58), n*0.05, n*0.08, light)
-
-
-def draw_blob(g, p, drips=True):
-    n = g.n; cx = n // 2
-    base, shade, light, acc = p
-    g.ellipse(cx, int(n*0.62), n*0.32, n*0.28, base)
-    g.rect(cx - int(n*0.3), int(n*0.6), cx + int(n*0.3), int(n*0.78), base)
-    # блик
-    g.ellipse(cx - int(n*0.12), int(n*0.5), n*0.1, n*0.09, light)
-    eyes(g, int(n*0.58), int(n*0.12), 1.8)
-    if drips:
-        g.ellipse(cx - int(n*0.22), int(n*0.82), n*0.05, n*0.07, base)
-        g.ellipse(cx + int(n*0.18), int(n*0.84), n*0.04, n*0.06, base)
-
-
-def draw_beast(g, p):
-    # четвероногий хищник, вид 3/4
-    n = g.n; cx = n // 2
-    base, shade, light, acc = p
-    g.ellipse(cx, int(n*0.6), n*0.3, n*0.2, base)          # тело
-    g.rect(cx - int(n*0.24), int(n*0.6), cx + int(n*0.24), int(n*0.76), shade)  # ноги-зона
-    for lx in (-0.2, -0.06, 0.08, 0.22):
-        g.rect(cx + int(n*lx), int(n*0.7), cx + int(n*lx) + 2, int(n*0.88), shade)
-    # голова
-    hy = int(n*0.4)
-    g.ellipse(cx, hy, n*0.19, n*0.17, base)
-    # уши
-    g.tri([(cx - int(n*0.14), hy - int(n*0.08)), (cx - int(n*0.22), hy - int(n*0.26)), (cx - int(n*0.04), hy - int(n*0.06))], shade)
-    g.tri([(cx + int(n*0.14), hy - int(n*0.08)), (cx + int(n*0.22), hy - int(n*0.26)), (cx + int(n*0.04), hy - int(n*0.06))], shade)
-    # морда
-    g.ellipse(cx, hy + int(n*0.08), n*0.08, n*0.06, light)
-    eyes(g, hy - 1, int(n*0.08), 1.3, acc)
-    # клыки
-    g.tri([(cx - 2, hy + int(n*0.1)), (cx - 3, hy + int(n*0.16)), (cx, hy + int(n*0.11))], (255,255,255))
-
-
-def draw_swarm(g, p):
-    # рой мелких тел
-    n = g.n; cx = n // 2
-    base, shade, light, acc = p
-    spots = [(cx, int(n*0.55), 0.16), (cx - int(n*0.2), int(n*0.4), 0.11),
-             (cx + int(n*0.22), int(n*0.46), 0.12), (cx - int(n*0.16), int(n*0.72), 0.1),
-             (cx + int(n*0.14), int(n*0.72), 0.11), (cx, int(n*0.3), 0.09)]
-    for (sx, sy, rr) in spots:
-        g.ellipse(sx, sy, n*rr, n*rr, base)
-        g.ellipse(sx - 1, sy - 1, n*rr*0.4, n*rr*0.4, light)
-        g.set(sx - 1, sy, PUPIL); g.set(sx + 1, sy, PUPIL)
-
-
-def draw_spider(g, p):
-    n = g.n; cx = n // 2
-    base, shade, light, acc = p
-    g.ellipse(cx, int(n*0.6), n*0.22, n*0.2, base)     # брюшко
-    g.ellipse(cx, int(n*0.42), n*0.14, n*0.12, shade)  # голова
-    # лапы
-    for i, ly in enumerate((0.46, 0.56, 0.66)):
-        g.rect(cx - int(n*0.42), int(n*ly), cx - int(n*0.14), int(n*ly)+1, base)
-        g.rect(cx + int(n*0.14), int(n*ly), cx + int(n*0.42), int(n*ly)+1, base)
-    eyes(g, int(n*0.4), int(n*0.05), 1, acc)
-    g.ellipse(cx - int(n*0.08), int(n*0.55), n*0.05, n*0.06, light)
-
-
-def draw_flame(g, p):
-    n = g.n; cx = n // 2
-    base, shade, light, acc = p
-    g.tri([(cx, int(n*0.14)), (cx - int(n*0.26), int(n*0.8)), (cx + int(n*0.26), int(n*0.8))], base)
-    g.ellipse(cx, int(n*0.74), n*0.26, n*0.16, base)
-    g.tri([(cx, int(n*0.3)), (cx - int(n*0.16), int(n*0.74)), (cx + int(n*0.16), int(n*0.74))], light)
-    g.tri([(cx, int(n*0.46)), (cx - int(n*0.08), int(n*0.72)), (cx + int(n*0.08), int(n*0.72))], acc)
-    eyes(g, int(n*0.62), int(n*0.09), 1.4, PUPIL)
-
-
-def draw_golem(g, p):
-    n = g.n; cx = n // 2
-    base, shade, light, acc = p
-    g.rect(cx - int(n*0.26), int(n*0.34), cx + int(n*0.26), int(n*0.8), base)   # торс
-    g.rect(cx - int(n*0.34), int(n*0.4), cx - int(n*0.26), int(n*0.72), shade)  # плечо
-    g.rect(cx - int(n*0.2), int(n*0.8), cx - int(n*0.04), int(n*0.92), shade)   # ноги
-    g.rect(cx + int(n*0.04), int(n*0.8), cx + int(n*0.2), int(n*0.92), shade)
-    # трещины/грани
-    g.rect(cx - int(n*0.18), int(n*0.44), cx - int(n*0.02), int(n*0.5), light)
-    g.rect(cx + int(n*0.06), int(n*0.58), cx + int(n*0.2), int(n*0.64), light)
-    eyes(g, int(n*0.44), int(n*0.09), 1.6, acc)
-
-
-def draw_ghost(g, p):
-    n = g.n; cx = n // 2
-    base, shade, light, acc = p
-    g.ellipse(cx, int(n*0.4), n*0.24, n*0.24, base)
-    g.rect(cx - int(n*0.24), int(n*0.4), cx + int(n*0.24), int(n*0.72), base)
-    # рваный низ
-    for i, ox in enumerate((-0.18, -0.06, 0.06, 0.18)):
-        g.tri([(cx + int(n*ox) - 3, int(n*0.68)), (cx + int(n*ox), int(n*0.86)), (cx + int(n*ox) + 3, int(n*0.68))], base)
-    g.ellipse(cx - int(n*0.09), int(n*0.34), n*0.06, n*0.08, light)
-    eyes(g, int(n*0.4), int(n*0.1), 1.6, acc)
-
-
-def draw_skull(g, p, armor=False):
-    n = g.n; cx = n // 2
-    base, shade, light, acc = p
-    # тело/кости
-    g.rect(cx - int(n*0.14), int(n*0.52), cx + int(n*0.14), int(n*0.82), shade)
-    g.ellipse(cx, int(n*0.36), n*0.2, n*0.2, base)   # череп
-    g.rect(cx - int(n*0.1), int(n*0.5), cx + int(n*0.1), int(n*0.58), base)  # челюсть
-    # глазницы
     for sx in (-1, 1):
-        g.ellipse(cx + sx * int(n*0.08), int(n*0.36), n*0.05, n*0.06, (10,10,14))
-    g.ellipse(cx, int(n*0.44), n*0.02, n*0.03, (10,10,14))
-    if armor:
-        g.rect(cx - int(n*0.2), int(n*0.5), cx + int(n*0.2), int(n*0.68), acc)
-        g.rect(cx - int(n*0.2), int(n*0.5), cx + int(n*0.2), int(n*0.54), light)
-    # ребра
-    for ry in (0.62, 0.7):
-        g.rect(cx - int(n*0.1), int(n*ry), cx + int(n*0.1), int(n*ry), light)
+        bx = cx + sx * spread
+        g.tri([(bx, hy), (bx + sx*4, hy - 8), (bx + sx*4, hy - 2)], col)
+
+def spikes_back(g, cx, y0, y1, dirx, col, count=4):
+    step = (y1 - y0) / count
+    for i in range(count):
+        y = y0 + step * i
+        g.tri([(cx, y), (cx, y + step*0.8), (cx + dirx*6, y + step*0.4)], col)
+
+def legs(g, cy, span, count, col, drop):
+    n = g.n; cx = n // 2
+    for sx in (-1, 1):
+        for i in range(count):
+            ay = cy - span*0.4 + (span*0.8) * i / max(1, count-1)
+            g.line(cx, ay, cx + sx*span, ay - 3, col, 1.6)
+            g.line(cx + sx*span, ay - 3, cx + sx*(span+2), ay + drop, col, 1.6)
 
 
-def draw_amorph(g, p):
-    # аморфное существо (void/chaos) с множеством глаз
+# ---- СЕМЕЙСТВА (рисуют левую половину + центр; потом mirror/shade/outline) ----
+def f_goblin(g, p, hood=False, staff=False, big=False):
     n = g.n; cx = n // 2
     base, shade, light, acc = p
-    g.ellipse(cx, int(n*0.55), n*0.3, n*0.3, base)
-    g.ellipse(cx - int(n*0.18), int(n*0.38), n*0.12, n*0.12, base)
-    g.ellipse(cx + int(n*0.2), int(n*0.44), n*0.1, n*0.1, base)
-    g.ellipse(cx, int(n*0.5), n*0.16, n*0.16, shade)
-    for (ex, ey, r) in [(0, 0.52, 2.2), (-0.16, 0.42, 1.3), (0.18, 0.48, 1.4), (-0.1, 0.66, 1.2)]:
-        gx = cx + int(n*ex)
-        g.ellipse(gx, int(n*ey), r, r, acc)
-        g.ellipse(gx, int(n*ey), r*0.45, r*0.45, PUPIL)
+    # хилое сгорбленное тело
+    g.ellipse(cx, n*0.68, n*0.2, n*0.18, base)
+    g.rect(cx - n*0.14, n*0.5, cx + n*0.14, n*0.74, base)
+    # тощие ноги
+    g.rect(cx - n*0.13, n*0.76, cx - n*0.03, n*0.9, shade)
+    # когтистая рука
+    g.line(cx - n*0.16, n*0.54, cx - n*0.24, n*0.72, base, 2)
+    for k in range(3):
+        g.line(cx - n*0.24, n*0.72 + k, cx - n*0.29, n*0.78 + k*2, shade, 1)
+    hy = n*0.34
+    if hood:
+        g.ellipse(cx, hy, n*0.2, n*0.21, shade)
+        g.tri([(cx, hy-n*0.2), (cx-n*0.1, hy-n*0.02), (cx+n*0.1, hy-n*0.02)], shade)
+        g.ellipse(cx, hy+2, n*0.13, n*0.13, (12, 10, 18))
+        eyes(g, hy+2, int(n*0.06), 1.3, acc, brow=False)
+    else:
+        g.ellipse(cx, hy, n*0.17, n*0.16, base)
+        # большие острые уши
+        g.tri([(cx-n*0.14, hy-2), (cx-n*0.34, hy-n*0.05), (cx-n*0.1, hy+4)], base)
+        eyes(g, hy-1, int(n*0.07), 1.5, acc)
+        # оскал с клыками
+        g.rect(cx-n*0.09, hy+n*0.09, cx+n*0.09, hy+n*0.13, (30, 20, 22))
+        fangs_down(g, hy+n*0.09, cx-n*0.09, cx+n*0.09, 4, FANG, 3)
+    if staff:
+        g.rect(cx+n*0.22, n*0.28, cx+n*0.25, n*0.82, (96, 70, 44))
+        g.ellipse(cx+n*0.235, n*0.26, n*0.06, n*0.06, acc)
+
+def f_beast(g, p):
+    # припавший хищник с оскалом
+    n = g.n; cx = n // 2
+    base, shade, light, acc = p
+    g.ellipse(cx, n*0.6, n*0.3, n*0.19, base)
+    spikes_back(g, cx, n*0.44, n*0.62, -1, shade, 4)   # шерсть-шипы на загривке
+    # лапы с когтями
+    for lx in (-0.22, -0.06):
+        g.rect(cx+n*lx, n*0.68, cx+n*lx+2.5, n*0.86, shade)
+        for k in range(2):
+            g.line(cx+n*lx, n*0.86, cx+n*lx - 1 + k*2, n*0.9, FANG, 1)
+    hy = n*0.44
+    g.ellipse(cx, hy, n*0.19, n*0.16, base)
+    g.tri([(cx-n*0.12, hy-n*0.08), (cx-n*0.24, hy-n*0.28), (cx-n*0.02, hy-n*0.05)], shade)  # ухо
+    # раскрытая пасть
+    g.tri([(cx-n*0.02, hy+n*0.04), (cx-n*0.2, hy+n*0.1), (cx-n*0.02, hy+n*0.2)], (26, 14, 16))
+    fangs_down(g, hy+n*0.06, cx-n*0.18, cx-n*0.02, 3, FANG, 4)
+    g.tri([(cx-n*0.18, hy+n*0.2), (cx-n*0.02, hy+n*0.16), (cx-n*0.06, hy+n*0.22)], FANG)  # нижний клык
+    eyes(g, hy-n*0.04, int(n*0.09), 1.5, acc)
+
+def f_ooze(g, p):
+    # кислотная тварь с зубастой пастью
+    n = g.n; cx = n // 2
+    base, shade, light, acc = p
+    g.ellipse(cx, n*0.62, n*0.32, n*0.28, base)
+    g.rect(cx-n*0.3, n*0.6, cx+n*0.3, n*0.78, base)
+    # потёки
+    for ox in (-0.2, -0.05):
+        g.ellipse(cx+n*ox, n*0.84, n*0.05, n*0.08, base)
+    # пузыри
+    g.ellipse(cx-n*0.12, n*0.44, n*0.05, n*0.05, lite(base, 0.4))
+    # разинутая пасть с зубами
+    g.ellipse(cx, n*0.66, n*0.16, n*0.1, (24, 16, 14))
+    teeth_row(g, n*0.6, cx-n*0.14, cx+n*0.14, 5, FANG)
+    fangs_down(g, n*0.72, cx-n*0.14, cx+n*0.14, 5, FANG, 3)
+    eyes(g, n*0.46, int(n*0.13), 2.0, acc)
+
+def f_swarm(g, p):
+    # рой мелких злых тварей с лапками
+    n = g.n; cx = n // 2
+    base, shade, light, acc = p
+    spots = [(cx, 0.56, 0.15), (cx-n*0.2, 0.4, 0.1), (cx-n*0.14, 0.72, 0.1), (cx, 0.3, 0.08)]
+    for (sx, fy, rr) in spots:
+        y = n*fy
+        g.ellipse(sx, y, n*rr, n*rr*0.85, base)
+        for s in (-1, 1):  # лапки
+            g.line(sx, y, sx+s*n*rr*1.5, y+2, shade, 1)
+            g.line(sx, y+1, sx+s*n*rr*1.4, y+n*rr, shade, 1)
+        g.ellipse(sx-1, y-1, n*rr*0.35, n*rr*0.35, acc)
+        g.set(sx, y-1, (255, 255, 255))
+
+def f_spider(g, p):
+    n = g.n; cx = n // 2
+    base, shade, light, acc = p
+    g.ellipse(cx, n*0.62, n*0.22, n*0.2, base)      # брюшко
+    g.line(cx-n*0.06, n*0.56, cx, n*0.68, dark(base, 0.6), 2)  # узор
+    g.ellipse(cx, n*0.42, n*0.13, n*0.11, shade)    # головогрудь
+    legs(g, n*0.5, n*0.36, 3, dark(base, 0.7), 8)
+    # хелицеры-клыки
+    g.tri([(cx-n*0.06, n*0.5), (cx-n*0.02, n*0.58), (cx-n*0.09, n*0.56)], FANG)
+    # много глаз
+    eyes(g, n*0.4, int(n*0.06), 1.2, acc, brow=False)
+    g.ellipse(cx-n*0.05, n*0.36, 1, 1, acc); g.ellipse(cx+n*0.05, n*0.36, 1, 1, acc)
+
+def f_skull(g, p, armor=False):
+    n = g.n; cx = n // 2
+    base, shade, light, acc = p
+    g.rect(cx-n*0.13, n*0.5, cx+n*0.13, n*0.8, shade)     # позвоночник/тело
+    # рёбра
+    for ry in (0.56, 0.64, 0.72):
+        g.line(cx-n*0.13, n*ry, cx+n*0.13, n*ry, base, 1)
+    # руки-кости
+    g.line(cx-n*0.13, n*0.52, cx-n*0.22, n*0.72, base, 1.6)
+    g.ellipse(cx, n*0.34, n*0.2, n*0.2, base)             # череп
+    g.rect(cx-n*0.1, n*0.46, cx+n*0.1, n*0.54, base)      # челюсть
+    # глазницы (светятся)
+    for s in (-1, 1):
+        g.ellipse(cx+s*n*0.08, n*0.34, n*0.055, n*0.06, (14, 12, 16))
+        g.ellipse(cx+s*n*0.08, n*0.35, n*0.03, n*0.035, acc)
+    g.tri([(cx, n*0.38), (cx-2, n*0.44), (cx+2, n*0.44)], (14, 12, 16))  # нос
+    teeth_row(g, n*0.47, cx-n*0.09, cx+n*0.09, 5, dark(base, 0.85))
+    if armor:
+        g.rect(cx-n*0.22, n*0.5, cx+n*0.22, n*0.7, acc)
+        g.tri([(cx-n*0.22, n*0.5), (cx-n*0.3, n*0.44), (cx-n*0.14, n*0.5)], acc)  # шип наплечника
+        g.rect(cx-n*0.22, n*0.5, cx+n*0.22, n*0.53, lite(acc, 0.3))
+
+def f_golem(g, p):
+    # каменный/ледяной колосс с трещинами и ядром
+    n = g.n; cx = n // 2
+    base, shade, light, acc = p
+    g.tri([(cx-n*0.3, n*0.82), (cx, n*0.28), (cx+n*0.3, n*0.82)], base)  # массивный торс-клин
+    g.rect(cx-n*0.28, n*0.5, cx+n*0.28, n*0.82, base)
+    # рваные плечи-глыбы
+    g.tri([(cx-n*0.28, n*0.4), (cx-n*0.42, n*0.5), (cx-n*0.2, n*0.56)], shade)
+    # руки-кувалды
+    g.rect(cx-n*0.4, n*0.5, cx-n*0.28, n*0.78, shade)
+    # ноги
+    g.rect(cx-n*0.2, n*0.82, cx-n*0.04, n*0.94, shade)
+    # трещины со свечением
+    g.line(cx-n*0.14, n*0.5, cx-n*0.02, n*0.7, acc, 1.4)
+    g.line(cx-n*0.02, n*0.7, cx+n*0.1, n*0.78, acc, 1.2)
+    g.ellipse(cx, n*0.62, n*0.05, n*0.05, acc)  # ядро
+    # тяжёлые светящиеся глаза
+    eyes(g, n*0.42, int(n*0.1), 1.8, acc)
+
+def f_flame(g, p):
+    # пламенная тварь с кричащим лицом
+    n = g.n; cx = n // 2
+    base, shade, light, acc = p
+    g.tri([(cx, n*0.1), (cx-n*0.28, n*0.82), (cx+n*0.28, n*0.82)], base)
+    # языки пламени
+    g.tri([(cx-n*0.18, n*0.4), (cx-n*0.3, n*0.2), (cx-n*0.06, n*0.44)], base)
+    g.tri([(cx, n*0.24), (cx-n*0.12, n*0.6), (cx+n*0.12, n*0.6)], light)
+    g.tri([(cx, n*0.42), (cx-n*0.06, n*0.66), (cx+n*0.06, n*0.66)], acc)
+    # хищное лицо
+    eyes(g, n*0.56, int(n*0.09), 1.6, (20, 12, 12))
+    g.tri([(cx, n*0.64), (cx-n*0.08, n*0.62), (cx+n*0.08, n*0.62)], (20, 12, 12))  # раскрытый рот
+    fangs_down(g, n*0.62, cx-n*0.07, cx+n*0.07, 3, light, 2)
+
+def f_ghost(g, p):
+    # вопящий призрак с рваным саваном
+    n = g.n; cx = n // 2
+    base, shade, light, acc = p
+    g.ellipse(cx, n*0.4, n*0.24, n*0.26, base)
+    g.rect(cx-n*0.24, n*0.4, cx+n*0.24, n*0.72, base)
+    for ox in (-0.16, 0.02):   # рваный низ
+        g.tri([(cx+n*ox-3, n*0.68), (cx+n*ox, n*0.88), (cx+n*ox+3, n*0.68)], base)
+    # когтистые призрачные руки
+    g.line(cx-n*0.2, n*0.44, cx-n*0.3, n*0.6, base, 2)
+    for k in range(2):
+        g.line(cx-n*0.3, n*0.6, cx-n*0.33+k*2, n*0.68, light, 1)
+    # впалое лицо
+    g.ellipse(cx-n*0.08, n*0.34, n*0.05, n*0.07, (20, 26, 34))
+    eyes(g, n*0.36, int(n*0.09), 1.6, acc, brow=False)
+    g.ellipse(cx, n*0.5, n*0.05, n*0.08, (20, 26, 34))  # вопящий рот
+
+def f_demon(g, p, hood=False):
+    n = g.n; cx = n // 2
+    base, shade, light, acc = p
+    g.ellipse(cx, n*0.66, n*0.22, n*0.2, base)
+    g.rect(cx-n*0.16, n*0.48, cx+n*0.16, n*0.74, base)
+    g.rect(cx-n*0.14, n*0.76, cx-n*0.02, n*0.9, shade)
+    # мускулистая когтистая рука
+    g.ellipse(cx-n*0.22, n*0.58, n*0.07, n*0.11, base)
+    for k in range(3):
+        g.line(cx-n*0.24, n*0.68, cx-n*0.28-k, n*0.76, FANG, 1)
+    hy = n*0.34
+    if hood:
+        g.ellipse(cx, hy, n*0.2, n*0.2, shade)
+        g.ellipse(cx, hy+2, n*0.13, n*0.13, (10, 8, 14))
+        eyes(g, hy+2, int(n*0.06), 1.3, acc, brow=False)
+    else:
+        g.ellipse(cx, hy, n*0.17, n*0.16, base)
+        horns(g, hy-n*0.08, int(n*0.11), shade)
+        eyes(g, hy-1, int(n*0.08), 1.6, acc)
+        g.rect(cx-n*0.08, hy+n*0.08, cx+n*0.08, hy+n*0.12, (24, 14, 16))
+        fangs_down(g, hy+n*0.08, cx-n*0.08, cx+n*0.08, 4, FANG, 3)
+
+def f_amorph(g, p):
+    # писклявая масса плоти с глазами и щупальцами
+    n = g.n; cx = n // 2
+    base, shade, light, acc = p
+    g.ellipse(cx, n*0.58, n*0.3, n*0.28, base)
+    g.ellipse(cx-n*0.16, n*0.4, n*0.12, n*0.12, base)
+    # щупальца
+    for s in (-1, 1):
+        g.line(cx+s*n*0.2, n*0.7, cx+s*n*0.36, n*0.86, base, 2)
+        g.line(cx+s*n*0.28, n*0.5, cx+s*n*0.44, n*0.44, base, 2)
+    # центральная пасть
+    g.ellipse(cx, n*0.6, n*0.1, n*0.08, (18, 10, 22))
+    fangs_down(g, n*0.56, cx-n*0.09, cx+n*0.09, 5, FANG, 3)
+    # разбросанные глаза
+    for (ex, fy, r) in [(0, 0.44, 2.2), (-0.18, 0.52, 1.4), (0.2, 0.5, 1.5), (-0.08, 0.7, 1.3)]:
+        gx = cx + n*ex
+        g.ellipse(gx, n*fy, r+0.6, r+0.6, dark(acc, 0.3))
+        g.ellipse(gx, n*fy, r, r, acc)
+        g.set(gx, n*fy, (10, 8, 12))
+
+def f_rat(g, p):
+    n = g.n; cx = n // 2
+    base, shade, light, acc = p
+    # стая крыс: две крупные морды
+    for (sx, fy, sc) in [(cx, 0.6, 1.0), (cx-n*0.22, 0.44, 0.7)]:
+        r = n*0.16*sc
+        g.ellipse(sx, n*fy, r, r*0.85, base)
+        g.tri([(sx-r*0.9, n*fy-r*0.2), (sx-r*1.6, n*fy-r*0.6), (sx-r*0.6, n*fy+r*0.4)], base)  # морда
+        g.ellipse(sx+r*0.3, n*fy-r*0.7, r*0.5, r*0.5, shade)  # ухо
+        g.line(sx+r*0.6, n*fy+r*0.3, sx+r*1.8, n*fy+r*0.6, shade, 1.4)  # хвост
+        g.ellipse(sx-r*0.7, n*fy-r*0.1, 1.4, 1.4, acc)  # красный глаз
 
 
-# ---- маппинг id -> (функция, палитра, kwargs) ----
 def M(fn, pal, **kw):
     return (fn, pal, kw)
 
 SPRITES = {
-    'hero':            M(draw_humanoid, PAL['hero'], ears=False, staff=False),
-    # ring 1 — зелёные равнины
-    'goblin_melee':    M(draw_humanoid, PAL['green'], ears=True),
-    'goblin_archer':   M(draw_humanoid, PAL['green'], ears=True, staff=True),
-    'goblin_shaman':   M(draw_humanoid, PAL['green'], hood=True, staff=True),
-    'wolf':            M(draw_beast,    PAL['gray']),
-    'rat_swarm':       M(draw_swarm,    PAL['rat']),
-    'spider':          M(draw_spider,   PAL['bog']),
-    'slime':           M(draw_blob,     PAL['green']),
-    'flying_swarm':    M(draw_swarm,    PAL['bog']),
-    # ring 2 — топи
-    'bog_spitter':     M(draw_blob,     PAL['bog']),
-    'skeleton':        M(draw_skull,    PAL['bone']),
-    'ghost':           M(draw_ghost,    PAL['ghost']),
-    'necro_mage':      M(draw_humanoid, PAL['void'], hood=True, staff=True),
-    'shadow_swarm':    M(draw_swarm,    PAL['void']),
-    # ring 3 — пустоши/огонь
-    'fire_elemental':  M(draw_flame,    PAL['fire']),
-    'magma_golem':     M(draw_golem,    PAL['fire']),
-    'demon_raider':    M(draw_humanoid, PAL['demon'], horns=True, ears=True),
-    'demon_cultist':   M(draw_humanoid, PAL['demon'], hood=True, staff=True),
-    'ash_swarm':       M(draw_swarm,    PAL['fire']),
-    # ring 4 — мёрзлые руины
-    'ice_golem':       M(draw_golem,    PAL['ice']),
-    'undead_knight':   M(draw_skull,    PAL['gray'], armor=True),
-    'shard_swarm':     M(draw_swarm,    PAL['ice']),
-    # ring 5 — бездна
-    'void_spawn':      M(draw_amorph,   PAL['void']),
-    'abyss_guard':     M(draw_golem,    PAL['void']),
-    'abyss_cultist':   M(draw_humanoid, PAL['void'], hood=True, horns=True, staff=True),
-    'chaos_beast':     M(draw_amorph,   PAL['demon']),
+    'hero':           M(f_goblin, PAL['hero']),  # герой — гуманоид (без клыков/ушей ниже переопределим)
+    'goblin_melee':   M(f_goblin, PAL['green']),
+    'goblin_archer':  M(f_goblin, PAL['green'], staff=True),
+    'goblin_shaman':  M(f_goblin, PAL['green'], hood=True, staff=True),
+    'wolf':           M(f_beast,  PAL['gray']),
+    'rat_swarm':      M(f_rat,    PAL['rat']),
+    'spider':         M(f_spider, PAL['bog']),
+    'slime':          M(f_ooze,   PAL['green']),
+    'flying_swarm':   M(f_swarm,  PAL['bog']),
+    'bog_spitter':    M(f_ooze,   PAL['bog']),
+    'skeleton':       M(f_skull,  PAL['bone']),
+    'ghost':          M(f_ghost,  PAL['ghost']),
+    'necro_mage':     M(f_demon,  PAL['void'], hood=True),
+    'shadow_swarm':   M(f_swarm,  PAL['void']),
+    'fire_elemental': M(f_flame,  PAL['fire']),
+    'magma_golem':    M(f_golem,  PAL['fire']),
+    'demon_raider':   M(f_demon,  PAL['demon']),
+    'demon_cultist':  M(f_demon,  PAL['demon'], hood=True),
+    'ash_swarm':      M(f_swarm,  PAL['fire']),
+    'ice_golem':      M(f_golem,  PAL['ice']),
+    'undead_knight':  M(f_skull,  PAL['gray'], armor=True),
+    'shard_swarm':    M(f_swarm,  PAL['ice']),
+    'void_spawn':     M(f_amorph, PAL['void']),
+    'abyss_guard':    M(f_golem,  PAL['void']),
+    'abyss_cultist':  M(f_demon,  PAL['void'], hood=True),
+    'chaos_beast':    M(f_amorph, PAL['demon']),
 }
 
 BOSSES = {
-    'tree_warden':    M(draw_golem,   PAL['green']),
-    'rot_leviathan':  M(draw_blob,    PAL['bog']),
-    'ash_lord':       M(draw_flame,   PAL['fire']),
-    'ice_titan':      M(draw_golem,   PAL['ice']),
-    'world_eater':    M(draw_amorph,  PAL['void']),
+    'tree_warden':   M(f_golem,  PAL['green']),
+    'rot_leviathan': M(f_amorph, PAL['bog']),
+    'ash_lord':      M(f_flame,  PAL['fire']),
+    'ice_titan':     M(f_golem,  PAL['ice']),
+    'world_eater':   M(f_amorph, PAL['void']),
+}
+
+# герой рисуется отдельной функцией (дружелюбнее, без клыков)
+def f_hero(g, p, **kw):
+    n = g.n; cx = n // 2
+    base, shade, light, acc = p
+    g.ellipse(cx, n*0.66, n*0.2, n*0.2, base)
+    g.rect(cx-n*0.15, n*0.48, cx+n*0.15, n*0.74, base)
+    g.rect(cx-n*0.13, n*0.76, cx-n*0.03, n*0.9, shade)
+    g.ellipse(cx-n*0.19, n*0.58, n*0.06, n*0.1, shade)  # рука
+    # плащ-акцент
+    g.rect(cx-n*0.15, n*0.5, cx+n*0.15, n*0.56, acc)
+    hy = n*0.32
+    g.ellipse(cx, hy, n*0.16, n*0.16, light)
+    eyes(g, hy, int(n*0.06), 1.3, (40, 60, 90), brow=False)
+    # капюшон/шлем
+    g.tri([(cx, hy-n*0.18), (cx-n*0.16, hy+n*0.02), (cx+n*0.16, hy+n*0.02)], shade)
+
+
+# ---- ОРУЖИЕ (иконки 32 лог.px) ----
+def w_sword(g):
+    n = g.n; cx = n//2
+    steel, sh, lt, ac = PAL['steel']; wd = PAL['wood'][0]
+    g.rect(cx-1.5, n*0.12, cx+1.5, n*0.66, steel)          # клинок
+    g.line(cx-1.5, n*0.12, cx, n*0.08, lt, 1)
+    g.rect(cx-0.5, n*0.14, cx+0.5, n*0.64, lt)             # блик
+    g.rect(cx-n*0.16, n*0.66, cx+n*0.16, n*0.7, PAL['gold'][0])  # гарда
+    g.rect(cx-1.5, n*0.7, cx+1.5, n*0.86, wd)             # рукоять
+    g.ellipse(cx, n*0.88, n*0.05, n*0.05, PAL['gold'][0])
+
+def w_greatsword(g):
+    n = g.n; cx = n//2
+    steel, sh, lt, ac = PAL['steel']
+    g.tri([(cx, n*0.06), (cx-n*0.11, n*0.62), (cx+n*0.11, n*0.62)], steel)
+    g.rect(cx-n*0.09, n*0.2, cx+n*0.09, n*0.62, steel)
+    g.rect(cx-0.5, n*0.1, cx+0.5, n*0.6, lt)
+    g.rect(cx-n*0.2, n*0.62, cx+n*0.2, n*0.68, PAL['gold'][0])
+    g.rect(cx-2, n*0.68, cx+2, n*0.9, PAL['wood'][0])
+
+def w_daggers(g):
+    n = g.n
+    steel, sh, lt, ac = PAL['steel']
+    for s, cx in ((1, n*0.36), (-1, n*0.64)):
+        g.line(cx, n*0.7, cx+s*n*0.2, n*0.14, steel, 3)
+        g.line(cx, n*0.72, cx+s*n*0.06, n*0.86, PAL['wood'][0], 2)
+        g.line(cx-s*n*0.05, n*0.66, cx+s*n*0.12, n*0.68, PAL['gold'][0], 2)
+
+def w_spear(g):
+    n = g.n; cx = n//2
+    steel, sh, lt, ac = PAL['steel']
+    g.rect(cx-1.2, n*0.2, cx+1.2, n*0.92, PAL['wood'][0])   # древко
+    g.tri([(cx, n*0.06), (cx-n*0.09, n*0.24), (cx+n*0.09, n*0.24)], steel)  # наконечник
+    g.line(cx, n*0.08, cx, n*0.22, lt, 1)
+
+def w_bow(g):
+    import math
+    n = g.n; cx = n//2
+    wd = PAL['wood']; steel = PAL['steel']
+    # изогнутый лук слева (дуга «D», выпуклостью влево)
+    bx = cx + n*0.02
+    for k in range(49):
+        t = k/48
+        ang = (t - 0.5) * 2.3                     # -1.15..1.15 рад → верх..низ
+        ay = n*0.5 + math.sin(ang) * n*0.4
+        ax = bx - math.cos(ang) * n*0.24
+        g.ellipse(ax, ay, 1.7, 1.7, wd[0])
+        g.ellipse(ax-0.6, ay, 0.8, 0.8, wd[1])
+    # тетива (прямая, между концами лука)
+    g.line(bx, n*0.1, bx, n*0.9, (235, 235, 225), 1)
+    # стрела на тетиве, летит вправо
+    g.rect(bx, n*0.49, cx+n*0.34, n*0.51, PAL['wood'][0])
+    g.tri([(cx+n*0.42, n*0.5), (cx+n*0.3, n*0.44), (cx+n*0.3, n*0.56)], steel[2])  # наконечник
+    g.line(bx-1, n*0.44, bx-1, n*0.56, wd[1], 1)  # оперение
+
+def w_staff(g):
+    n = g.n; cx = n//2
+    wd = PAL['wood']; ac = PAL['void'][3]
+    g.rect(cx-1.5, n*0.24, cx+1.5, n*0.92, wd[0])
+    g.ellipse(cx, n*0.2, n*0.12, n*0.12, ac)          # кристалл-свечение
+    g.ellipse(cx, n*0.2, n*0.06, n*0.06, (255, 255, 255))
+    g.line(cx, n*0.32, cx, n*0.24, ac, 1)
+
+def w_claws(g):
+    n = g.n; cx = n//2
+    steel = PAL['steel']
+    g.rect(cx-n*0.16, n*0.6, cx+n*0.16, n*0.74, PAL['wood'][0])  # хват
+    for i, ox in enumerate((-0.16, 0, 0.16)):
+        g.line(cx+n*ox, n*0.6, cx+n*ox+n*0.06, n*0.12, steel[0], 2.4)
+        g.line(cx+n*ox, n*0.6, cx+n*ox+n*0.06, n*0.12, steel[2], 0.8)
+
+def w_whip(g):
+    n = g.n; cx = n//2
+    lth = (120, 70, 40)
+    g.rect(cx-n*0.28, n*0.68, cx-n*0.14, n*0.82, PAL['wood'][0])  # рукоять
+    px, py = cx-n*0.14, n*0.72
+    for i in range(24):
+        t = i/23
+        nx = cx-n*0.14 + n*0.42*t
+        ny = n*0.72 - n*0.5*t + n*0.12* (1 if int(t*6)%2 else -1) * t
+        g.line(px, py, nx, ny, lth, 2 - t)
+        px, py = nx, ny
+
+def w_thrown(g):
+    n = g.n; cx = n//2; cy = n//2
+    steel = PAL['steel']
+    for a in range(4):
+        import math
+        ang = a * math.pi/2 + math.pi/4
+        ex = cx + math.cos(ang)*n*0.34; ey = cy + math.sin(ang)*n*0.34
+        g.tri([(cx+math.cos(ang-0.4)*n*0.12, cy+math.sin(ang-0.4)*n*0.12),
+               (cx+math.cos(ang+0.4)*n*0.12, cy+math.sin(ang+0.4)*n*0.12),
+               (ex, ey)], steel[0])
+    g.ellipse(cx, cy, n*0.1, n*0.1, steel[1])
+    g.ellipse(cx, cy, n*0.04, n*0.04, (20, 20, 24))
+
+def w_maul(g):
+    n = g.n; cx = n//2
+    steel = PAL['steel']
+    g.rect(cx-1.5, n*0.24, cx+1.5, n*0.92, PAL['wood'][0])   # рукоять
+    g.rect(cx-n*0.2, n*0.14, cx+n*0.2, n*0.34, steel[0])     # голова молота
+    g.rect(cx-n*0.2, n*0.14, cx+n*0.2, n*0.19, steel[2])
+    g.rect(cx-n*0.2, n*0.3, cx+n*0.2, n*0.34, steel[1])
+
+WEAPONS = {
+    'sword': w_sword, 'greatsword': w_greatsword, 'daggers': w_daggers,
+    'spear': w_spear, 'bow': w_bow, 'staff': w_staff, 'claws': w_claws,
+    'whip': w_whip, 'thrown': w_thrown, 'maul': w_maul,
 }
 
 
-def build(name, spec, n, scale):
-    fn, pal, kw = spec
+def build_creature(name, fn, pal, kw, n, scale, mirror=True):
+    random.seed(name)
     g = Grid(n)
     fn(g, pal, **kw)
-    g.mirror_lr()
-    g.add_outline()
-    img = g.render(scale)
-    img.save(os.path.join(OUT, name + '.png'))
+    if mirror:
+        g.mirror_lr()
+    g.shade()
+    g.outline()
+    g.render(scale).save(os.path.join(OUT, name + '.png'))
+
+
+def build_weapon(name, fn, n=32, scale=4):
+    g = Grid(n)
+    fn(g)
+    g.shade()
+    g.outline()
+    g.render(scale).save(os.path.join(OUT, 'wpn_' + name + '.png'))
 
 
 def main():
-    for name, spec in SPRITES.items():
-        fname = name if name == 'hero' else 'mob_' + name
-        build(fname, spec, 40, 4)
-    for name, spec in BOSSES.items():
-        build('boss_' + name, spec, 48, 5)
-    print('готово: %d мобов+герой, %d боссов' % (len(SPRITES), len(BOSSES)))
+    for name, (fn, pal, kw) in SPRITES.items():
+        f = f_hero if name == 'hero' else fn
+        out = name if name == 'hero' else 'mob_' + name
+        build_creature(out, f, pal, kw, 48, 4, mirror=(f is not f_rat))
+    for name, (fn, pal, kw) in BOSSES.items():
+        build_creature('boss_' + name, fn, pal, kw, 60, 5)
+    for name, fn in WEAPONS.items():
+        build_weapon(name, fn)
+    print('готово: %d существ, %d боссов, %d оружий' % (len(SPRITES), len(BOSSES), len(WEAPONS)))
 
 
 if __name__ == '__main__':

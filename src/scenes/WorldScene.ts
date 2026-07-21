@@ -846,8 +846,12 @@ export class WorldScene extends Phaser.Scene {
     const pool = WEAPON_ITEMS.filter((w) => w.rarity === rarity);
     const weapon = Phaser.Utils.Array.GetRandom(pool.length ? pool : WEAPON_ITEMS);
     const color = ELEMENT_COLORS[weapon.element] ?? 0xf0c040;
-    const ring2 = this.add.circle(0, 0, 15, color, 0.85).setStrokeStyle(3, 0xffffff, 0.9);
-    const icon = this.add.text(0, 0, '⚔', { fontFamily: 'system-ui', fontSize: '16px', color: '#fff' }).setOrigin(0.5);
+    const ring2 = this.add.circle(0, 0, 18, color, 0.85).setStrokeStyle(3, 0xffffff, 0.9);
+    // иконка оружия по архетипу (фолбэк на глиф, если текстуры нет)
+    const key = 'wpn_' + weapon.archetype;
+    const icon: Phaser.GameObjects.GameObject = this.textures.exists(key)
+      ? this.add.image(0, 0, key).setScale(0.42).setOrigin(0.5)
+      : this.add.text(0, 0, '⚔', { fontFamily: 'system-ui', fontSize: '16px', color: '#fff' }).setOrigin(0.5);
     const c = this.add.container(x, y, [ring2, icon]).setDepth(9);
     this.tweens.add({ targets: c, y: y - 6, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
     this.pickups.push({ x, y, weapon, tier: ring, gfx: c });
