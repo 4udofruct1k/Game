@@ -3,6 +3,7 @@ import { COLORS } from '../data/theme';
 import { HEALS } from '../data/items';
 import { TouchControls } from '../ui/TouchControls';
 import { touch } from '../core/touchInput';
+import { GAMEPLAY } from '../data/balance';
 
 // HUD-оверлей. Читает состояние из registry['hud'], которое пишет WorldScene.
 export class UIScene extends Phaser.Scene {
@@ -22,6 +23,9 @@ export class UIScene extends Phaser.Scene {
   private bossName!: Phaser.GameObjects.Text;
   private bossBarBg!: Phaser.GameObjects.Rectangle;
   private bossBar!: Phaser.GameObjects.Rectangle;
+  private minimap!: Phaser.GameObjects.Graphics;
+  private readonly mmR = 50; // радиус миникарты, px
+  private readonly mmC = new Phaser.Math.Vector2(70, 158); // центр миникарты на экране
 
   constructor() {
     super({ key: 'UI', active: false });
@@ -75,6 +79,9 @@ export class UIScene extends Phaser.Scene {
     this.bossBarBg = this.add.rectangle(w / 2, 50, 420, 12, 0x3a1518).setOrigin(0.5).setVisible(false);
     this.bossBar = this.add.rectangle(w / 2 - 210, 50, 420, 12, 0xd64550).setOrigin(0, 0.5).setVisible(false);
 
+    // миникарта (рисуется в update)
+    this.minimap = this.add.graphics().setScrollFactor(0).setDepth(60);
+
     // сенсорные контролы — на тач-устройствах (или ?touch=1 для отладки)
     const forceTouch = typeof location !== 'undefined' && new URLSearchParams(location.search).has('touch');
     if (this.sys.game.device.input.touch || forceTouch) {
@@ -84,7 +91,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   update(): void {
-    const hud = this.registry.get('hud') as Record<string, number | string | boolean> | undefined;
+    const hud = this.registry.get('hud') as Record<string, unknown> | undefined;
     if (!hud) return;
     const hp = hud.hp as number;
     const maxHp = hud.maxHp as number;
@@ -128,5 +135,57 @@ export class UIScene extends Phaser.Scene {
       this.bossBarBg.setVisible(false);
       this.bossBar.setVisible(false);
     }
+
+    this.drawMinimap(hud);
+  }
+
+  private drawMinimap(hud: Record<string, unknown>): void {
+    const g = this.minimap;
+    g.clear();
+    const cx = this.mmC.x;
+    const cy = this.mmC.y;
+    const R = this.mmR;
+    const wc = GAMEPLAY.worldRadius; // мир центрирован в (wc, wc)
+    const scale = R / wc;
+
+    // фон + рамка
+    g.fillStyle(0x0a0e18, 0.62).fillCircle(cx, cy, R + 3);
+    g.lineStyle(2, 0x3a4a66, 0.9).strokeCircle(cx, cy, R + 3);
+    // граница мира / кольцо 1 / хаб
+    g.lineStyle(1, 0x2a3a2a, 0.8).strokeCircle(cx, cy, GAMEPLAY.ring1Outer * scale);
+    g.fillStyle(0x14301c, 0.5).fillCircle(cx, cy, GAMEPLAY.ring1Outer * scale);
+    g.fillStyle(0x1c2740, 0.9).fillCircle(cx, cy, GAMEPLAY.hubRadius * scale);
+    g.lineStyle(1, 0x4a7ac0, 0.9).strokeCircle(cx, cy, GAMEPLAY.hubRadius * scale);
+
+    const toMap = (wx: number, wy: number): { x: number; y: number; out: boolean } => {
+      let dx = (wx - wc) * scale;
+      let dy = (wy - wc) * scale;
+      const len = Math.hypot(dx, dy);
+      let out = false;
+      if (len > R) {
+        dx = (dx / len) * R;
+        dy = (dy / len) * R;
+        out = true;
+      }
+      return { x: cx + dx, y: cy + dy, out };
+    };
+
+    // мобы
+    const blips = (hud.blips as { x: number; y: number; elite: boolean }[]) ?? [];
+    for (const b of blips) {
+      const p = toMap(b.x, b.y);
+      if (p.out) continue;
+      g.fillStyle(b.elite ? 0xff8a3a : 0xd64550, 0.95).fillCircle(p.x, p.y, b.elite ? 2.4 : 1.6);
+    }
+    // босс
+    if (hud.hasBoss) {
+      const p = toMap(hud.bossX as number, hud.bossY as number);
+      g.fillStyle(0xff9a2a, 1).fillCircle(p.x, p.y, 3.4);
+      g.lineStyle(1, 0xffd080, 0.9).strokeCircle(p.x, p.y, 4.6);
+    }
+    // игрок
+    const pp = toMap(hud.px as number, hud.py as number);
+    g.fillStyle(0xffffff, 1).fillCircle(pp.x, pp.y, 2.8);
+    g.lineStyle(1, 0x8fc0ff, 0.9).strokeCircle(pp.x, pp.y, 4.4);
   }
 }

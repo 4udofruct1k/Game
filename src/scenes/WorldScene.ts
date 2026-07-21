@@ -16,6 +16,9 @@ import { REACTIONS, type Element } from '../data/elements';
 import { CLASS_STATS } from '../data/classes';
 import { touch, consumeTouch } from '../core/touchInput';
 
+// Радиус, за которым мобы (не боссы) деспавнятся и переспавниваются ближе к игроку.
+const CULL_RANGE = 1500;
+
 interface Telegraph {
   x: number;
   y: number;
@@ -177,6 +180,11 @@ export class WorldScene extends Phaser.Scene {
     const ctx = this.enemyContext();
     for (const e of this.enemies) {
       if (!e.active) continue;
+      // отсев далёких мобов (кроме боссов) — держим стаю в радиусе вокруг игрока
+      if (Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y) > CULL_RANGE) {
+        this.despawnEnemy(e);
+        continue;
+      }
       e.update(dt, ctx);
       if (e.isDead) this.killEnemy(e);
     }
@@ -679,6 +687,14 @@ export class WorldScene extends Phaser.Scene {
     e.kill();
   }
 
+  // Убрать моба без награды (отсев по дальности).
+  private despawnEnemy(e: Enemy): void {
+    if (!e.active) return;
+    this.enemyGroup.remove(e);
+    this.touchCd.delete(e);
+    e.kill();
+  }
+
   private onBossDead(): void {
     if (!this.boss) return;
     const bx = this.boss.x;
@@ -926,6 +942,13 @@ export class WorldScene extends Phaser.Scene {
       bossMaxHp: this.boss?.active ? this.boss.maxHp : 1,
       banner: this.bannerT > 0 ? this.banner : '',
       inHub: this.inHub(),
+      // данные миникарты
+      px: this.player.x,
+      py: this.player.y,
+      hasBoss: !!(this.boss && this.boss.active),
+      bossX: this.boss?.active ? this.boss.x : 0,
+      bossY: this.boss?.active ? this.boss.y : 0,
+      blips: this.enemies.filter((e) => e.active).slice(0, 60).map((e) => ({ x: e.x, y: e.y, elite: e.isElite })),
     });
   }
 }
