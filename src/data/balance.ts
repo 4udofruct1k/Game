@@ -72,3 +72,19 @@ export const GAMEPLAY = {
   enemyProjectileSpeed: 320,
   moveSpeedScale: 3.4, // множитель перевода базовой скорости в px/с
 };
+
+// 5 концентрических колец между хабом и краем мира.
+export const RING_COUNT = 5;
+export function ringOuterRadius(i: number): number {
+  const band = (GAMEPLAY.worldRadius - GAMEPLAY.hubRadius) / RING_COUNT;
+  return GAMEPLAY.hubRadius + i * band;
+}
+// Название биома по кольцу (0 = хаб).
+export const BIOME_NAMES = [
+  'Хаб',
+  'Зелёные равнины',
+  'Топи и пещеры',
+  'Выжженные пустоши',
+  'Мёрзлые руины',
+  'Край Бездны',
+];

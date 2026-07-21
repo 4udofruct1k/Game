@@ -4,12 +4,13 @@ import { Player } from '../entities/Player';
 import { Enemy, type EnemyContext } from '../entities/Enemy';
 import { Boss, type BossContext } from '../entities/Boss';
 import { Projectile } from '../entities/Projectile';
-import { GAMEPLAY, ENERGY_MAX, ENERGY_REGEN, ENERGY_COST, ULT_CHARGE_FULL, ULT_CHARGE_PER_DMG, ULT_CHARGE_PER_KILL } from '../data/balance';
+import { GAMEPLAY, ENERGY_MAX, ENERGY_REGEN, ENERGY_COST, ULT_CHARGE_FULL, ULT_CHARGE_PER_DMG, ULT_CHARGE_PER_KILL, ringOuterRadius, RING_COUNT, BIOME_NAMES } from '../data/balance';
 import { COLORS, ELEMENT_COLORS } from '../data/theme';
 import { MOBS_BY_RING, RING_STATS, ringLevelScale, type MobDef } from '../data/mobs';
-import { BOSSES_BY_RING } from '../data/bosses';
-import { WEAPON_ARCHETYPES } from '../data/weapons';
-import { fullHit, type HitInput } from '../core/damage';
+import { BOSSES_BY_RING, type BossDef } from '../data/bosses';
+import { WEAPON_ARCHETYPES, WEAPON_ITEMS, type WeaponItemDef } from '../data/weapons';
+import { fullHit, weaponAV, type HitInput } from '../core/damage';
+import type { Rarity } from '../data/rarity';
 import { applyElement, vulnMult } from '../core/statusEngine';
 import { grantKillReward } from '../core/economy';
 import { REACTIONS, type Element } from '../data/elements';
@@ -18,6 +19,17 @@ import { touch, consumeTouch } from '../core/touchInput';
 
 // Радиус, за которым мобы (не боссы) деспавнятся и переспавниваются ближе к игроку.
 const CULL_RANGE = 1500;
+
+// Цвета земли биомов по кольцам (индекс = кольцо, 0 = хаб).
+const BIOME_GROUND = [0x1c2233, 0x14301c, 0x1b2a1e, 0x2a1a14, 0x18242f, 0x1a1026];
+
+interface Pickup {
+  x: number;
+  y: number;
+  weapon: WeaponItemDef;
+  tier: number;
+  gfx: Phaser.GameObjects.Container;
+}
 
 interface Telegraph {
   x: number;
@@ -55,7 +67,9 @@ export class WorldScene extends Phaser.Scene {
   private inHubGrace = 0;
   private banner = '';
   private bannerT = 0;
-  private bossSpawned = false;
+  private activeBossRing = 0; // кольцо активного босса (0 = нет)
+  private pickups: Pickup[] = [];
+  private lastRing = 0;
   private regenFlask = { pct: 0, remaining: 0, ratePerSec: 0 };
   private lastTime = 0;
 
@@ -70,7 +84,9 @@ export class WorldScene extends Phaser.Scene {
     this.eProj = [];
     this.boss = null;
     this.telegraphs = [];
-    this.bossSpawned = false;
+    this.activeBossRing = 0;
+    this.pickups = [];
+    this.lastRing = 0;
     this.energy = ENERGY_MAX;
 
     this.drawGround();
@@ -101,24 +117,33 @@ export class WorldScene extends Phaser.Scene {
     );
   }
 
+  // Кольцо по расстоянию до центра (0 = хаб, 1..5).
+  private ringOf(dist: number): number {
+    if (dist < GAMEPLAY.hubRadius) return 0;
+    for (let i = 1; i <= RING_COUNT; i++) if (dist <= ringOuterRadius(i)) return i;
+    return RING_COUNT;
+  }
+
   // ---------- Мир ----------
   private drawGround(): void {
     const g = this.add.graphics().setDepth(-10);
     const cx = this.center.x;
     const cy = this.center.y;
-    // внешняя граница (ад)
-    g.fillStyle(0x120c10, 1).fillCircle(cx, cy, GAMEPLAY.worldRadius - 10);
-    // кольцо 1 (равнины)
-    g.fillStyle(COLORS.ringGround, 1).fillCircle(cx, cy, GAMEPLAY.ring1Outer);
+    // от внешнего кольца к внутреннему (внутренние перекрывают)
+    for (let i = RING_COUNT; i >= 1; i--) {
+      g.fillStyle(BIOME_GROUND[i], 1).fillCircle(cx, cy, ringOuterRadius(i));
+    }
     // хаб (безопасная зона)
-    g.fillStyle(COLORS.hubGround, 1).fillCircle(cx, cy, GAMEPLAY.hubRadius);
-    g.lineStyle(4, 0x3a5f8a, 0.8).strokeCircle(cx, cy, GAMEPLAY.hubRadius);
-    g.lineStyle(2, 0x2a4a2a, 0.6).strokeCircle(cx, cy, GAMEPLAY.ring1Outer);
-    // отметка хаба
+    g.fillStyle(BIOME_GROUND[0], 1).fillCircle(cx, cy, GAMEPLAY.hubRadius);
+    g.lineStyle(4, 0x3a5f8a, 0.85).strokeCircle(cx, cy, GAMEPLAY.hubRadius);
+    // границы колец
+    for (let i = 1; i <= RING_COUNT; i++) {
+      g.lineStyle(2, 0x000000, 0.35).strokeCircle(cx, cy, ringOuterRadius(i));
+    }
     this.add
       .text(cx, cy, 'ХАБ\n(безопасно)', {
         fontFamily: 'system-ui',
-        fontSize: '16px',
+        fontSize: '18px',
         color: '#8fb0e0',
         align: 'center',
       })
@@ -192,11 +217,19 @@ export class WorldScene extends Phaser.Scene {
     // босс
     if (this.boss && this.boss.active) {
       this.boss.update(dtMs, this.bossContext());
-      if (this.boss.isDead) this.onBossDead();
+      if (this.boss.isDead) {
+        this.onBossDead();
+      } else if (Phaser.Math.Distance.Between(this.player.x, this.player.y, this.boss.x, this.boss.y) > 1000) {
+        // ушёл далеко от босса — босс исчезает (не убит), появится снова при возвращении
+        this.boss.kill();
+        this.boss = null;
+        this.activeBossRing = 0;
+      }
     }
 
     this.updateTelegraphs(time);
     this.updateProjectilesCleanup();
+    this.updatePickups();
 
     // спавн мобов + появление босса
     this.spawnLogic(dt);
@@ -577,49 +610,63 @@ export class WorldScene extends Phaser.Scene {
 
   // ---------- Спавн ----------
   private spawnLogic(dt: number): void {
+    const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.center.x, this.center.y);
+    const ring = this.ringOf(dist);
+
+    // смена биома → баннер
+    if (ring !== this.lastRing) {
+      this.lastRing = ring;
+      if (ring >= 1) this.flashBanner(`Кольцо ${ring} · ${BIOME_NAMES[ring]}`, 2500);
+    }
+
     this.spawnTimer -= dt;
     const activeMobs = this.enemies.filter((e) => e.active).length;
-    if (this.spawnTimer <= 0 && activeMobs < 14 && !this.bossSpawned) {
-      this.spawnTimer = 1.2;
-      this.spawnWave();
+    if (ring >= 1 && !this.boss && this.spawnTimer <= 0 && activeMobs < 16) {
+      this.spawnTimer = 1.1;
+      this.spawnWave(ring);
     }
-    // появление босса, когда игрок близко к внешнему краю
-    if (!this.bossSpawned) {
-      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.center.x, this.center.y);
-      if (d > GAMEPLAY.ring1Outer - 260) this.spawnBoss();
+
+    // босс текущего кольца (если ещё не убит и не активен)
+    if (ring >= 1 && !this.boss) {
+      const def = BOSSES_BY_RING[ring];
+      if (def && !this.run.bossesKilled.includes(def.id)) {
+        const innerR = ringOuterRadius(ring - 1);
+        const trigger = innerR + (ringOuterRadius(ring) - innerR) * 0.55;
+        if (dist > trigger) this.spawnBoss(ring);
+      }
     }
   }
 
-  private spawnWave(): void {
-    const pool = MOBS_BY_RING[1];
+  private spawnWave(ring: number): void {
+    const pool = MOBS_BY_RING[ring] ?? MOBS_BY_RING[1];
     const count = Phaser.Math.Between(2, 4);
     for (let i = 0; i < count; i++) {
       const def = Phaser.Utils.Array.GetRandom(pool);
       const pos = this.randomSpawnPos();
       if (!pos) continue;
-      this.spawnEnemy(def, pos.x, pos.y, def.ai === 'swarm' && Math.random() < 0.3);
+      this.spawnEnemy(def, pos.x, pos.y, ring, def.ai === 'swarm' && Math.random() < 0.3);
     }
   }
 
   private randomSpawnPos(): Phaser.Math.Vector2 | null {
-    // вокруг игрока, но вне хаба и в пределах кольца
     for (let tries = 0; tries < 8; tries++) {
       const ang = Math.random() * Math.PI * 2;
-      const dist = Phaser.Math.Between(320, 460);
+      const dist = Phaser.Math.Between(340, 520);
       const x = this.player.x + Math.cos(ang) * dist;
       const y = this.player.y + Math.sin(ang) * dist;
       const dc = Phaser.Math.Distance.Between(x, y, this.center.x, this.center.y);
-      if (dc > GAMEPLAY.hubRadius + 30 && dc < GAMEPLAY.ring1Outer - 20) {
+      if (dc > GAMEPLAY.hubRadius + 40 && dc < GAMEPLAY.worldRadius - 40) {
         return new Phaser.Math.Vector2(x, y);
       }
     }
     return null;
   }
 
-  private spawnEnemy(def: MobDef, x: number, y: number, elite = false): Enemy {
+  private spawnEnemy(def: MobDef, x: number, y: number, ring: number, elite = false): Enemy {
     const e = this.getEnemy();
-    const base = RING_STATS[1];
-    const scale = ringLevelScale(1, this.run.levelState.level);
+    const base = RING_STATS[ring] ?? RING_STATS[1];
+    const mobLevel = Phaser.Math.Clamp(this.run.levelState.level, base.minLevel, base.minLevel + 19);
+    const scale = ringLevelScale(ring, mobLevel);
     const eliteMul = elite ? { hp: 3, dmg: 1.5, loot: 3 } : { hp: 1, dmg: 1, loot: 1 };
     e.spawn(
       def,
@@ -639,17 +686,17 @@ export class WorldScene extends Phaser.Scene {
     return e;
   }
 
-  private spawnBoss(): void {
-    this.bossSpawned = true;
-    const def = BOSSES_BY_RING[1];
-    // очистить мелочь
+  private spawnBoss(ring: number): void {
+    const def = BOSSES_BY_RING[ring];
+    this.activeBossRing = ring;
     const ang = Phaser.Math.Angle.Between(this.center.x, this.center.y, this.player.x, this.player.y);
-    const bx = this.center.x + Math.cos(ang) * (GAMEPLAY.ring1Outer - 120);
-    const by = this.center.y + Math.sin(ang) * (GAMEPLAY.ring1Outer - 120);
+    const r = ringOuterRadius(ring) - 120;
+    const bx = this.center.x + Math.cos(ang) * r;
+    const by = this.center.y + Math.sin(ang) * r;
     this.boss = new Boss(this);
-    const base = RING_STATS[1];
+    const base = RING_STATS[ring];
     this.boss.spawn(def, bx, by, {
-      hp: base.hp * def.hpMult * 6,
+      hp: base.hp * def.hpMult,
       dmg: base.dmg * def.dmgMult,
       armor: base.armor * 1.5,
     });
@@ -667,7 +714,7 @@ export class WorldScene extends Phaser.Scene {
       this.bossTouchCd = 800;
       this.hitPlayer(this.boss!.dmg, this.boss!.def.element);
     });
-    this.flashBanner('⚠ БОСС: Древо-Страж', 3000);
+    this.flashBanner(`⚠ ${def.final ? 'ФИНАЛ' : 'БОСС'}: ${def.name}`, 3200);
   }
 
   // ---------- Смерть врагов/босса ----------
@@ -697,21 +744,79 @@ export class WorldScene extends Phaser.Scene {
 
   private onBossDead(): void {
     if (!this.boss) return;
+    const def: BossDef = this.boss.def;
+    const ring = def.ring;
     const bx = this.boss.x;
     const by = this.boss.y;
-    this.run.gainXP(RING_STATS[1].xp * 80);
-    this.run.wallet.gold += 300;
+    this.run.gainXP(RING_STATS[ring].xp * 80);
+    this.run.wallet.gold += 200 * ring;
     this.run.wallet.bossCores += 1;
-    this.run.evolve(this.boss.def.reward.evolutionStage);
-    if (!this.run.bossesKilled.includes(this.boss.def.id)) this.run.bossesKilled.push(this.boss.def.id);
+    if (def.reward.evolutionStage > 0) this.run.evolve(def.reward.evolutionStage);
+    if (!this.run.bossesKilled.includes(def.id)) this.run.bossesKilled.push(def.id);
     this.player.refreshFromStats();
+    this.run.currentHP = this.run.stats().maxHP;
     this.boss.kill();
     this.boss = null;
+    this.activeBossRing = 0;
     this.spawnPickupFx(bx, by, 0xffaa33);
-    this.flashBanner('Древо-Страж повержен! Эволюция класса I', 3000);
+    this.cameras.main.shake(300, 0.012);
+
+    // дроп оружия на землю
+    this.dropBossWeapon(ring, bx, by);
     this.run.persist();
-    // Демо-победа среза → экран рекорда через 3с
-    this.time.delayedCall(3000, () => this.finishVictory());
+
+    if (def.final) {
+      this.flashBanner('🏆 ПОЖИРАТЕЛЬ МИРОВ ПОВЕРЖЕН — ПОБЕДА!', 3500);
+      this.time.delayedCall(3200, () => this.finishVictory());
+      return;
+    }
+    const evoMsg =
+      def.reward.evolutionStage > 0
+        ? ` Эволюция класса ${['I', 'II', 'III'][def.reward.evolutionStage - 1]}!`
+        : ' Легендарный дроп!';
+    this.flashBanner(`${def.name} повержен!${evoMsg} Дальше — Кольцо ${Math.min(RING_COUNT, ring + 1)}`, 3500);
+  }
+
+  // Оружие с босса падает на землю; редкость растёт с кольцом.
+  private dropBossWeapon(ring: number, x: number, y: number): void {
+    const rarities: Rarity[] = ['uncommon', 'rare', 'epic', 'legendary', 'mythic'];
+    const rarity = rarities[Math.min(4, ring - 1)];
+    const pool = WEAPON_ITEMS.filter((w) => w.rarity === rarity);
+    const weapon = Phaser.Utils.Array.GetRandom(pool.length ? pool : WEAPON_ITEMS);
+    const color = ELEMENT_COLORS[weapon.element] ?? 0xf0c040;
+    const ring2 = this.add.circle(0, 0, 15, color, 0.85).setStrokeStyle(3, 0xffffff, 0.9);
+    const icon = this.add.text(0, 0, '⚔', { fontFamily: 'system-ui', fontSize: '16px', color: '#fff' }).setOrigin(0.5);
+    const c = this.add.container(x, y, [ring2, icon]).setDepth(9);
+    this.tweens.add({ targets: c, y: y - 6, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
+    this.pickups.push({ x, y, weapon, tier: ring, gfx: c });
+  }
+
+  private updatePickups(): void {
+    for (let i = this.pickups.length - 1; i >= 0; i--) {
+      const p = this.pickups[i];
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y) < 40) {
+        this.collectWeapon(p);
+        p.gfx.destroy();
+        this.pickups.splice(i, 1);
+      }
+    }
+  }
+
+  private collectWeapon(p: Pickup): void {
+    const newAV = weaponAV(p.weapon, p.tier, 0, 1);
+    const curAV = weaponAV(this.run.build.weapon, this.run.build.weaponTier, this.run.build.weaponEnchant, 1);
+    if (newAV > curAV) {
+      this.run.build.weapon = p.weapon;
+      this.run.build.weaponTier = p.tier;
+      this.run.build.weaponEnchant = 0;
+      this.player.refreshFromStats();
+      this.flashBanner(`Новое оружие: ${p.weapon.name} (AV ${Math.round(newAV)})`, 2500);
+    } else {
+      const gold = Math.round(newAV * 3);
+      this.run.wallet.gold += gold;
+      this.flashBanner(`Продано: ${p.weapon.name} (+${gold}⦿)`, 2000);
+    }
+    this.spawnPickupFx(p.x, p.y, 0xf0c040);
   }
 
   private onLevelUp(levels: number): void {
@@ -786,10 +891,12 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private summonAdds(x: number, y: number, count: number): void {
-    const def = MOBS_BY_RING[1].find((m) => m.id === 'goblin_melee')!;
+    const ring = this.activeBossRing || 1;
+    const pool = MOBS_BY_RING[ring] ?? MOBS_BY_RING[1];
+    const def = pool.find((m) => m.ai === 'chaser' || m.ai === 'charger') ?? pool[0];
     for (let i = 0; i < count; i++) {
       const a = (i / count) * Math.PI * 2;
-      this.spawnEnemy({ ...def, name: 'Саженец', color: 0x6f9f4a }, x + Math.cos(a) * 60, y + Math.sin(a) * 60);
+      this.spawnEnemy(def, x + Math.cos(a) * 60, y + Math.sin(a) * 60, ring);
     }
   }
 
