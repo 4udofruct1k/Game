@@ -70,6 +70,10 @@ export class WorldScene extends Phaser.Scene {
   private activeBossRing = 0; // кольцо активного босса (0 = нет)
   private pickups: Pickup[] = [];
   private lastRing = 0;
+  private bossColliders: Phaser.Physics.Arcade.Collider[] = [];
+  private dmgPool: Phaser.GameObjects.Text[] = [];
+  private dmgIdx = 0;
+  private lastDmgAt = 0;
   private regenFlask = { pct: 0, remaining: 0, ratePerSec: 0 };
   private lastTime = 0;
 
@@ -221,9 +225,7 @@ export class WorldScene extends Phaser.Scene {
         this.onBossDead();
       } else if (Phaser.Math.Distance.Between(this.player.x, this.player.y, this.boss.x, this.boss.y) > 1000) {
         // ушёл далеко от босса — босс исчезает (не убит), появится снова при возвращении
-        this.boss.kill();
-        this.boss = null;
-        this.activeBossRing = 0;
+        this.removeBoss();
       }
     }
 
@@ -701,7 +703,7 @@ export class WorldScene extends Phaser.Scene {
       armor: base.armor * 1.5,
     });
     this.boss.setDepth(7);
-    this.physics.add.overlap(this.pProjGroup, this.boss, (proj) => {
+    const c1 = this.physics.add.overlap(this.pProjGroup, this.boss, (proj) => {
       const p = proj as Projectile;
       if (!p.active || p.payload.owner !== 'player') return;
       const input = (p as Projectile & { hitInput?: HitInput }).hitInput;
@@ -709,12 +711,22 @@ export class WorldScene extends Phaser.Scene {
       p.payload.pierce -= 1;
       if (p.payload.pierce <= 0 && !p.payload.boomerang) p.kill();
     });
-    this.physics.add.overlap(this.player, this.boss, () => {
+    const c2 = this.physics.add.overlap(this.player, this.boss, () => {
       if (this.bossTouchCd > 0) return;
       this.bossTouchCd = 800;
       this.hitPlayer(this.boss!.dmg, this.boss!.def.element);
     });
+    this.bossColliders.push(c1, c2);
     this.flashBanner(`⚠ ${def.final ? 'ФИНАЛ' : 'БОСС'}: ${def.name}`, 3200);
+  }
+
+  // Снять босса со сцены и почистить его коллайдеры (без наград).
+  private removeBoss(): void {
+    if (this.boss) this.boss.kill();
+    this.boss = null;
+    this.activeBossRing = 0;
+    this.bossColliders.forEach((c) => c.destroy());
+    this.bossColliders = [];
   }
 
   // ---------- Смерть врагов/босса ----------
@@ -758,6 +770,8 @@ export class WorldScene extends Phaser.Scene {
     this.boss.kill();
     this.boss = null;
     this.activeBossRing = 0;
+    this.bossColliders.forEach((c) => c.destroy());
+    this.bossColliders = [];
     this.spawnPickupFx(bx, by, 0xffaa33);
     this.cameras.main.shake(300, 0.012);
 
@@ -1004,17 +1018,29 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private spawnDamageNumber(x: number, y: number, dmg: number, crit: boolean, el: Element, label?: string): void {
+    const important = crit || !!label;
+    // троттлинг обычных чисел (важные — криты/реакции — всегда)
+    if (!important && this.lastTime - this.lastDmgAt < 45) return;
+    this.lastDmgAt = this.lastTime;
+
     const color = label ? '#ffdd66' : crit ? '#ffcf3f' : el !== 'none' ? '#' + (ELEMENT_COLORS[el] ?? 0xffffff).toString(16).padStart(6, '0') : '#ffffff';
-    const t = this.add
-      .text(x + Phaser.Math.Between(-8, 8), y - 10, label ? `${label} ${Math.round(dmg)}` : `${Math.round(dmg)}`, {
-        fontFamily: 'system-ui',
-        fontSize: crit || label ? '16px' : '13px',
-        color,
-        fontStyle: crit || label ? 'bold' : 'normal',
-      })
-      .setDepth(20)
-      .setOrigin(0.5);
-    this.tweens.add({ targets: t, y: y - 44, alpha: 0, duration: 620, onComplete: () => t.destroy() });
+    const POOL = 28;
+    let t = this.dmgPool[this.dmgIdx];
+    if (!t) {
+      t = this.add.text(0, 0, '', { fontFamily: 'system-ui', fontSize: '13px' }).setDepth(20).setOrigin(0.5);
+      this.dmgPool[this.dmgIdx] = t;
+    }
+    this.dmgIdx = (this.dmgIdx + 1) % POOL;
+    this.tweens.killTweensOf(t);
+    const px = x + Phaser.Math.Between(-8, 8);
+    t.setText(label ? `${label} ${Math.round(dmg)}` : `${Math.round(dmg)}`)
+      .setColor(color)
+      .setFontSize(important ? 16 : 13)
+      .setFontStyle(important ? 'bold' : 'normal')
+      .setPosition(px, y - 10)
+      .setAlpha(1)
+      .setVisible(true);
+    this.tweens.add({ targets: t, y: y - 44, alpha: 0, duration: 600, onComplete: () => t.setVisible(false) });
   }
 
   private spawnPickupFx(x: number, y: number, color: number): void {
