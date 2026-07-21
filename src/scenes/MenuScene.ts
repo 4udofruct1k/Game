@@ -4,6 +4,8 @@ import { TALENT_TREE, CLASS_SKILL_TREES, tierThreshold, type SkillTree, type Ski
 import { CLASS_STATS, CLASS_ABILITIES } from '../data/classes';
 import { RARITY_NAMES } from '../data/rarity';
 import { ELEMENT_NAMES } from '../data/elements';
+import { BASE_W, BASE_H } from '../data/balance';
+import { centerUICamera } from '../ui/layout';
 
 type Tab = 'stats' | 'talents' | 'skills' | 'inventory';
 
@@ -18,8 +20,10 @@ export class MenuScene extends Phaser.Scene {
 
   create(data: { from?: string }): void {
     this.from = data?.from ?? 'World';
-    const { width, height } = this.scale;
-    this.add.rectangle(width / 2, height / 2, width, height, 0x05060c, 0.92);
+    const width = BASE_W;
+    const height = BASE_H;
+    void height;
+    this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x05060c, 0.92).setOrigin(0).setScrollFactor(0);
     this.add.text(width / 2, 20, 'МЕНЮ ПЕРСОНАЖА', { fontFamily: 'system-ui', fontSize: '20px', color: '#f0c040' }).setOrigin(0.5);
 
     const tabs: [Tab, string][] = [
@@ -53,6 +57,8 @@ export class MenuScene extends Phaser.Scene {
 
     this.container = this.add.container(0, 0);
     this.render();
+
+    centerUICamera(this);
   }
 
   private close(): void {

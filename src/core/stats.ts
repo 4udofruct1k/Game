@@ -10,6 +10,7 @@ import {
   SET_BONUS_2,
   SET_BONUS_4,
   SET_BONUS_6_MAIN,
+  GAMEPLAY,
 } from '../data/balance';
 import {
   ARMOR_BASE,
@@ -174,7 +175,7 @@ export function computeStats(build: PlayerBuild): ResolvedStats {
 
   const moveSpeed =
     BASE_MOVE_SPEED * cls.mobility * (1 + (mods.moveSpeedPct ?? 0)) *
-    (build.weapon ? weaponMobility(build.weapon) : 1) * 2.4; // масштаб в px/с
+    (build.weapon ? weaponMobility(build.weapon) : 1) * GAMEPLAY.moveSpeedScale; // масштаб в px/с
 
   const atkSpeedMult =
     cls.atkSpeed * (1 + (mods.atkSpeedPct ?? 0)) * weaponAtkSpeed(build.weapon);
