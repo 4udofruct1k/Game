@@ -1,0 +1,929 @@
+import Phaser from 'phaser';
+import { getCurrentRun, Run } from '../core/run';
+import { Player } from '../entities/Player';
+import { Enemy, type EnemyContext } from '../entities/Enemy';
+import { Boss, type BossContext } from '../entities/Boss';
+import { Projectile } from '../entities/Projectile';
+import { GAMEPLAY, ENERGY_MAX, ENERGY_REGEN, ENERGY_COST, ULT_CHARGE_FULL, ULT_CHARGE_PER_DMG, ULT_CHARGE_PER_KILL } from '../data/balance';
+import { COLORS, ELEMENT_COLORS } from '../data/theme';
+import { MOBS_BY_RING, RING_STATS, ringLevelScale, type MobDef } from '../data/mobs';
+import { BOSSES_BY_RING } from '../data/bosses';
+import { WEAPON_ARCHETYPES } from '../data/weapons';
+import { fullHit, type HitInput } from '../core/damage';
+import { applyElement, vulnMult } from '../core/statusEngine';
+import { grantKillReward } from '../core/economy';
+import { REACTIONS, type Element } from '../data/elements';
+import { CLASS_STATS } from '../data/classes';
+import { touch, consumeTouch } from '../core/touchInput';
+
+interface Telegraph {
+  x: number;
+  y: number;
+  radius: number;
+  born: number;
+  duration: number;
+  dmg: number;
+  element: Element;
+  gfx: Phaser.GameObjects.Arc;
+  resolved: boolean;
+}
+
+export class WorldScene extends Phaser.Scene {
+  private run!: Run;
+  private player!: Player;
+  private enemies: Enemy[] = [];
+  private pProj: Projectile[] = [];
+  private eProj: Projectile[] = [];
+  private boss: Boss | null = null;
+  private telegraphs: Telegraph[] = [];
+
+  private enemyGroup!: Phaser.Physics.Arcade.Group;
+  private pProjGroup!: Phaser.Physics.Arcade.Group;
+  private eProjGroup!: Phaser.Physics.Arcade.Group;
+
+  private keys!: Record<string, Phaser.Input.Keyboard.Key>;
+  private energy = ENERGY_MAX;
+  private ultCharge = 0;
+  private skillCd = 0;
+  private spawnTimer = 0;
+  private touchCd = new Map<Enemy, number>();
+  private bossTouchCd = 0;
+  private center = new Phaser.Math.Vector2(GAMEPLAY.worldRadius, GAMEPLAY.worldRadius);
+  private inHubGrace = 0;
+  private banner = '';
+  private bannerT = 0;
+  private bossSpawned = false;
+  private regenFlask = { pct: 0, remaining: 0, ratePerSec: 0 };
+  private lastTime = 0;
+
+  constructor() {
+    super('World');
+  }
+
+  create(): void {
+    this.run = getCurrentRun();
+    this.enemies = [];
+    this.pProj = [];
+    this.eProj = [];
+    this.boss = null;
+    this.telegraphs = [];
+    this.bossSpawned = false;
+    this.energy = ENERGY_MAX;
+
+    this.drawGround();
+
+    this.enemyGroup = this.physics.add.group();
+    this.pProjGroup = this.physics.add.group();
+    this.eProjGroup = this.physics.add.group();
+
+    // Игрок стартует у внутреннего края кольца.
+    const start = new Phaser.Math.Vector2(this.center.x, this.center.y - GAMEPLAY.hubRadius - 40);
+    this.player = new Player(this, start.x, start.y, this.run);
+    this.player.setDepth(10);
+    this.physics.world.setBounds(0, 0, GAMEPLAY.worldRadius * 2, GAMEPLAY.worldRadius * 2);
+    this.player.setCollideWorldBounds(true);
+
+    this.cameras.main.setBounds(0, 0, GAMEPLAY.worldRadius * 2, GAMEPLAY.worldRadius * 2);
+    this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
+    this.cameras.main.setBackgroundColor(0x0a0a12);
+
+    this.setupInput();
+    this.setupOverlaps();
+
+    this.scene.launch('UI');
+
+    this.flashBanner(
+      `${CLASS_STATS[this.run.loadout.classId].name} · ${this.run.loadout.weapon.name}. К краю — там босс!`,
+      3500,
+    );
+  }
+
+  // ---------- Мир ----------
+  private drawGround(): void {
+    const g = this.add.graphics().setDepth(-10);
+    const cx = this.center.x;
+    const cy = this.center.y;
+    // внешняя граница (ад)
+    g.fillStyle(0x120c10, 1).fillCircle(cx, cy, GAMEPLAY.worldRadius - 10);
+    // кольцо 1 (равнины)
+    g.fillStyle(COLORS.ringGround, 1).fillCircle(cx, cy, GAMEPLAY.ring1Outer);
+    // хаб (безопасная зона)
+    g.fillStyle(COLORS.hubGround, 1).fillCircle(cx, cy, GAMEPLAY.hubRadius);
+    g.lineStyle(4, 0x3a5f8a, 0.8).strokeCircle(cx, cy, GAMEPLAY.hubRadius);
+    g.lineStyle(2, 0x2a4a2a, 0.6).strokeCircle(cx, cy, GAMEPLAY.ring1Outer);
+    // отметка хаба
+    this.add
+      .text(cx, cy, 'ХАБ\n(безопасно)', {
+        fontFamily: 'system-ui',
+        fontSize: '16px',
+        color: '#8fb0e0',
+        align: 'center',
+      })
+      .setOrigin(0.5)
+      .setDepth(-9);
+  }
+
+  private setupInput(): void {
+    const kb = this.input.keyboard!;
+    this.keys = kb.addKeys('W,A,S,D,SPACE,J,K,E,TAB,H,ONE,TWO,THREE,FOUR') as Record<
+      string,
+      Phaser.Input.Keyboard.Key
+    >;
+    kb.on('keydown-SPACE', () => this.player.tryDash());
+    kb.on('keydown-J', () => this.castSkill());
+    kb.on('keydown-K', () => this.castUlt());
+    kb.on('keydown-E', () => this.tryEnterHub());
+    kb.on('keydown-H', () => this.useHeal());
+    kb.on('keydown-TAB', (e: KeyboardEvent) => {
+      e.preventDefault();
+      this.openMenu();
+    });
+    kb.on('keydown-ONE', () => (this.run.selectedHeal = 'small_potion'));
+    kb.on('keydown-TWO', () => (this.run.selectedHeal = 'big_potion'));
+    kb.on('keydown-THREE', () => (this.run.selectedHeal = 'regen_flask'));
+    kb.on('keydown-FOUR', () => (this.run.selectedHeal = 'elixir'));
+  }
+
+  private setupOverlaps(): void {
+    this.physics.add.overlap(this.pProjGroup, this.enemyGroup, (proj, enemy) => {
+      this.onPlayerProjHitEnemy(proj as Projectile, enemy as Enemy);
+    });
+    this.physics.add.overlap(this.eProjGroup, this.player, (_pl, proj) => {
+      this.onEnemyProjHitPlayer(proj as Projectile);
+    });
+    this.physics.add.overlap(this.player, this.enemyGroup, (_pl, enemy) => {
+      this.onPlayerTouchEnemy(enemy as Enemy);
+    });
+  }
+
+  // ---------- Цикл ----------
+  update(time: number, delta: number): void {
+    const dtMs = delta;
+    const dt = delta / 1000;
+    this.lastTime = time;
+    this.run.addPlaytime(dtMs);
+
+    this.handleMovement(dtMs);
+    this.handleTouchActions();
+    this.player.tick(dtMs);
+
+    // энергия/реген/скиллы
+    this.energy = Math.min(ENERGY_MAX, this.energy + ENERGY_REGEN * dt);
+    if (this.skillCd > 0) this.skillCd -= dtMs;
+    this.regenPlayer(dt);
+    this.autoAttack(time);
+
+    // враги
+    const ctx = this.enemyContext();
+    for (const e of this.enemies) {
+      if (!e.active) continue;
+      e.update(dt, ctx);
+      if (e.isDead) this.killEnemy(e);
+    }
+
+    // босс
+    if (this.boss && this.boss.active) {
+      this.boss.update(dtMs, this.bossContext());
+      if (this.boss.isDead) this.onBossDead();
+    }
+
+    this.updateTelegraphs(time);
+    this.updateProjectilesCleanup();
+
+    // спавн мобов + появление босса
+    this.spawnLogic(dt);
+
+    // смерть игрока
+    if (this.run.currentHP <= 0) this.onPlayerDead();
+
+    // таймеры контактов
+    for (const [e, t] of this.touchCd) {
+      const nt = t - dtMs;
+      if (nt <= 0) this.touchCd.delete(e);
+      else this.touchCd.set(e, nt);
+    }
+    if (this.bossTouchCd > 0) this.bossTouchCd -= dtMs;
+
+    // баннер
+    if (this.bannerT > 0) this.bannerT -= dtMs;
+
+    this.pushHud();
+  }
+
+  private handleMovement(dtMs: number): void {
+    const dir = new Phaser.Math.Vector2(0, 0);
+    if (this.keys.W.isDown) dir.y -= 1;
+    if (this.keys.S.isDown) dir.y += 1;
+    if (this.keys.A.isDown) dir.x -= 1;
+    if (this.keys.D.isDown) dir.x += 1;
+    // сенсорный стик
+    if (touch.moving) {
+      dir.x += touch.moveX;
+      dir.y += touch.moveY;
+    }
+    // прицел по умолчанию — к указателю (десктоп); авто-прицел по врагу — в autoAttack
+    if (!touch.enabled) {
+      const ptr = this.input.activePointer;
+      const world = this.cameras.main.getWorldPoint(ptr.x, ptr.y);
+      const aim = new Phaser.Math.Vector2(world.x - this.player.x, world.y - this.player.y);
+      if (aim.lengthSq() > 4) this.player.facing.copy(aim.normalize());
+    } else if (dir.lengthSq() > 0) {
+      this.player.facing.copy(dir.clone().normalize());
+    }
+    this.player.handleMovement(dir, dtMs);
+
+    // grace-таймер выхода из хаба
+    const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.center.x, this.center.y);
+    if (d < GAMEPLAY.hubRadius) this.inHubGrace = 400;
+    else if (this.inHubGrace > 0) this.inHubGrace -= dtMs;
+  }
+
+  private handleTouchActions(): void {
+    if (consumeTouch('dash')) this.player.tryDash();
+    if (consumeTouch('skill')) this.castSkill();
+    if (consumeTouch('ult')) this.castUlt();
+    if (consumeTouch('heal')) this.useHeal();
+    if (consumeTouch('hub')) this.tryEnterHub();
+    if (consumeTouch('menu')) this.openMenu();
+  }
+
+  // Направление на ближайшего врага/босса в радиусе (для авто-прицела).
+  private nearestTargetDir(range: number): Phaser.Math.Vector2 | null {
+    let best: { x: number; y: number } | null = null;
+    let bestD = range;
+    for (const e of this.enemies) {
+      if (!e.active) continue;
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
+      if (d < bestD) {
+        bestD = d;
+        best = { x: e.x, y: e.y };
+      }
+    }
+    if (this.boss && this.boss.active) {
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.boss.x, this.boss.y);
+      if (d < bestD) {
+        bestD = d;
+        best = { x: this.boss.x, y: this.boss.y };
+      }
+    }
+    if (!best) return null;
+    return new Phaser.Math.Vector2(best.x - this.player.x, best.y - this.player.y).normalize();
+  }
+
+  private regenPlayer(dt: number): void {
+    const s = this.run.stats();
+    if (this.run.currentHP > 0 && this.run.currentHP < s.maxHP) {
+      this.run.currentHP = Math.min(s.maxHP, this.run.currentHP + s.regen * dt);
+    }
+    if (this.regenFlask.remaining > 0) {
+      this.regenFlask.remaining -= dt;
+      this.run.currentHP = Math.min(s.maxHP, this.run.currentHP + this.regenFlask.ratePerSec * dt);
+    }
+  }
+
+  // ---------- Атаки ----------
+  private autoAttack(time: number): void {
+    if (this.player.attackCd > 0) return;
+    if (this.inHub()) return;
+    const s = this.run.stats();
+    const arch = WEAPON_ARCHETYPES[this.run.loadout.weapon.archetype];
+    const period = 1000 / (arch.atkSpeedMult && s.atkSpeedMult ? s.atkSpeedMult : 1);
+    this.player.attackCd = Math.max(120, period);
+
+    // авто-прицел по ближайшему врагу (обязателен для тача, удобен и на десктопе)
+    const aim = this.nearestTargetDir(arch.ranged ? arch.range : arch.range + 40);
+    if (aim) this.player.facing.copy(aim);
+    else if (touch.enabled) return; // на тач-устройстве без цели не тратим атаку
+
+    if (arch.ranged) {
+      this.rangedAttack();
+    } else {
+      this.meleeAttack();
+    }
+    void time;
+  }
+
+  private baseHitInput(coef: number): HitInput {
+    const s = this.run.stats();
+    let pct = s.pctBonuses;
+    const weaponEl = this.run.loadout.weapon.element;
+    const infusion = this.run.loadout.element;
+    const elemental = weaponEl !== 'none' || infusion !== 'none';
+    if (elemental) pct += s.elemDmgPct;
+    if (coef > 1) pct += s.skillDmgPct;
+    return {
+      av: s.av,
+      classDmgMult: s.classDmgMult,
+      classPowerMult: s.classPowerMult * s.evolutionMult,
+      pctBonuses: pct,
+      coef,
+      critChance: s.critChance,
+      critMult: 1.5 + s.critDmg,
+      weaponElement: weaponEl,
+      infusion,
+      armorPen: s.armorPen,
+    };
+  }
+
+  private meleeAttack(): void {
+    const arch = WEAPON_ARCHETYPES[this.run.loadout.weapon.archetype];
+    const range = arch.range;
+    const facing = this.player.facing.clone();
+    const angle = facing.angle();
+    const arc = arch.pattern === 'melee_thrust' ? 0.35 : arch.pattern === 'melee_wide' ? 1.7 : 1.1;
+
+    // визуал дуги
+    const g = this.add.graphics().setDepth(9);
+    g.fillStyle(0xffffff, 0.18);
+    g.slice(this.player.x, this.player.y, range, angle - arc / 2, angle + arc / 2, false);
+    g.fillPath();
+    this.tweens.add({ targets: g, alpha: 0, duration: 140, onComplete: () => g.destroy() });
+
+    const input = this.baseHitInput(1.0);
+    let hitAny = false;
+    for (const e of this.enemies) {
+      if (!e.active) continue;
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
+      if (d > range + e.displayWidth / 2) continue;
+      const a = Phaser.Math.Angle.Between(this.player.x, this.player.y, e.x, e.y);
+      if (Math.abs(Phaser.Math.Angle.Wrap(a - angle)) > arc / 2) continue;
+      this.dealToEnemy(e, input);
+      hitAny = true;
+    }
+    if (this.boss && this.boss.active) {
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.boss.x, this.boss.y);
+      const a = Phaser.Math.Angle.Between(this.player.x, this.player.y, this.boss.x, this.boss.y);
+      if (d <= range + this.boss.displayWidth / 2 && Math.abs(Phaser.Math.Angle.Wrap(a - angle)) <= arc / 2) {
+        this.dealToBoss(input);
+        hitAny = true;
+      }
+    }
+    void hitAny;
+  }
+
+  private rangedAttack(): void {
+    const arch = WEAPON_ARCHETYPES[this.run.loadout.weapon.archetype];
+    const cost = arch.pattern === 'boomerang' ? ENERGY_COST.thrown : arch.id === 'bow' ? ENERGY_COST.bowShot : ENERGY_COST.cast;
+    if (this.energy < cost) return;
+    this.energy -= cost;
+    const input = this.baseHitInput(1.0);
+    const el = this.run.loadout.weapon.element !== 'none' ? this.run.loadout.weapon.element : this.run.loadout.element;
+    const facing = this.player.facing.clone().normalize();
+
+    const fanCount = this.run.loadout.weapon.id === 'sky_rain' || this.run.loadout.weapon.id === 'blade_swarm' ? 3 : 1;
+    for (let i = 0; i < fanCount; i++) {
+      const spread = (i - (fanCount - 1) / 2) * 0.18;
+      const dir = facing.clone().rotate(spread);
+      this.firePlayerProjectile(dir, input, el, arch.pattern === 'boomerang');
+    }
+  }
+
+  private firePlayerProjectile(dir: Phaser.Math.Vector2, input: HitInput, el: Element, boomerang: boolean): void {
+    // предрасчёт урона (крит/стихия фиксируются в момент попадания через dealToEnemy c этим input)
+    const proj = this.getProjectile(this.pProj, this.pProjGroup);
+    const speed = GAMEPLAY.projectileSpeed;
+    const payload = {
+      owner: 'player' as const,
+      raw: 0,
+      element: el,
+      isTrue: el === 'void',
+      crit: false,
+      pierce: this.run.loadout.weapon.affixText.includes('пробива') ? 3 : 1,
+      boomerang,
+      returnTo: boomerang ? () => new Phaser.Math.Vector2(this.player.x, this.player.y) : undefined,
+    };
+    (proj as Projectile & { hitInput?: HitInput }).hitInput = input;
+    proj.fire(this.player.x, this.player.y, dir.x * speed, dir.y * speed, payload, 7);
+  }
+
+  private castSkill(): void {
+    if (this.skillCd > 0 || this.inHub()) return;
+    const s = this.run.stats();
+    const coef = CLASS_STATS[this.run.loadout.classId].skillCoef;
+    this.skillCd = 5000 * (1 - s.cdrPct);
+    const input = this.baseHitInput(coef);
+    const radius = 150;
+    this.aoeBurst(this.player.x, this.player.y, radius, input, this.skillElement(), 0x88bbff);
+    this.flashBanner(CLASS_STATS[this.run.loadout.classId].name + ': ' + (this.run.loadout.abilitySkill), 900);
+  }
+
+  private castUlt(): void {
+    if (this.ultCharge < ULT_CHARGE_FULL || this.inHub()) return;
+    this.ultCharge = 0;
+    const coef = CLASS_STATS[this.run.loadout.classId].ultCoef;
+    const input = this.baseHitInput(coef);
+    // очистка экрана — большой AoE вокруг игрока
+    this.aoeBurst(this.player.x, this.player.y, 360, input, this.skillElement(), 0xffaa33);
+    this.cameras.main.shake(220, 0.01);
+    this.flashBanner('УЛЬТА!', 1200);
+  }
+
+  private skillElement(): Element {
+    const w = this.run.loadout.weapon.element;
+    return w !== 'none' ? w : this.run.loadout.element;
+  }
+
+  private aoeBurst(x: number, y: number, radius: number, input: HitInput, el: Element, color: number): void {
+    const ring = this.add.circle(x, y, 10, color, 0.35).setDepth(8);
+    this.tweens.add({
+      targets: ring,
+      radius,
+      alpha: 0,
+      duration: 260,
+      onComplete: () => ring.destroy(),
+    });
+    for (const e of this.enemies) {
+      if (!e.active) continue;
+      if (Phaser.Math.Distance.Between(x, y, e.x, e.y) <= radius) this.dealToEnemy(e, input, el);
+    }
+    if (this.boss && this.boss.active && Phaser.Math.Distance.Between(x, y, this.boss.x, this.boss.y) <= radius) {
+      this.dealToBoss(input, el);
+    }
+  }
+
+  // ---------- Нанесение урона ----------
+  private dealToEnemy(e: Enemy, input: HitInput, forceElement?: Element): void {
+    const res = fullHit(input, { armor: e.armor, res: e.res }, () => Math.random());
+    const vuln = vulnMult(e.status);
+    let dealt = res.dealt * vuln;
+    e.applyDamage(dealt);
+    this.addUltCharge(dealt);
+    this.lifesteal(dealt);
+    this.spawnDamageNumber(e.x, e.y, dealt, res.crit, res.element);
+
+    // статус/реакция
+    const el = forceElement ?? res.element;
+    if (el !== 'none') {
+      const reaction = applyElement(e.status, el, input.av, {
+        doubleReaction: this.run.loadout.relic?.flag === 'double_reaction',
+      });
+      if (reaction) this.resolveReaction(e.x, e.y, reaction.kind, reaction.mult, reaction.radius, dealt, input, el);
+    }
+    if (e.isDead) this.killEnemy(e);
+  }
+
+  private dealToBoss(input: HitInput, forceElement?: Element): void {
+    if (!this.boss) return;
+    const res = fullHit(input, { armor: this.boss.armor, res: this.boss.res }, () => Math.random());
+    const s = this.run.stats();
+    let dealt = res.dealt * (1 + (s.mods.bossDmgPct ?? 0)) * vulnMult(this.boss.status);
+    this.boss.applyDamage(dealt);
+    this.addUltCharge(dealt);
+    this.lifesteal(dealt);
+    this.spawnDamageNumber(this.boss.x, this.boss.y, dealt, res.crit, res.element);
+    const el = forceElement ?? res.element;
+    if (el !== 'none') {
+      const reaction = applyElement(this.boss.status, el, input.av, {
+        doubleReaction: this.run.loadout.relic?.flag === 'double_reaction',
+      });
+      if (reaction) {
+        this.resolveReaction(this.boss.x, this.boss.y, reaction.kind, reaction.mult, reaction.radius, dealt, input, el, true);
+      }
+    }
+  }
+
+  private resolveReaction(
+    x: number,
+    y: number,
+    kind: keyof typeof REACTIONS,
+    mult: number,
+    radius: number,
+    triggerDmg: number,
+    input: HitInput,
+    el: Element,
+    fromBoss = false,
+  ): void {
+    const def = REACTIONS[kind];
+    const burst = triggerDmg * mult;
+    // визуал
+    const color = ELEMENT_COLORS[el] ?? 0xffffff;
+    const fx = this.add.circle(x, y, Math.max(20, radius), color, 0.4).setDepth(8);
+    this.tweens.add({ targets: fx, alpha: 0, scale: 1.4, duration: 220, onComplete: () => fx.destroy() });
+    this.spawnDamageNumber(x, y - 14, burst, true, el, def.name);
+
+    if (radius > 0) {
+      for (const e of this.enemies) {
+        if (!e.active) continue;
+        if (Phaser.Math.Distance.Between(x, y, e.x, e.y) <= radius) {
+          e.applyDamage(burst * 0.6);
+          if (def.stun) e.status.stunT = Math.max(e.status.stunT, def.stun);
+          if (e.isDead) this.killEnemy(e);
+        }
+      }
+      if (!fromBoss && this.boss && this.boss.active && Phaser.Math.Distance.Between(x, y, this.boss.x, this.boss.y) <= radius) {
+        this.boss.applyDamage(burst * 0.6);
+      }
+    } else {
+      // одноцелевые реакции — доп. урон уже в burst, применяем к ближайшему/цели
+      if (!fromBoss) {
+        const target = this.enemies.find((e) => e.active && Phaser.Math.Distance.Between(x, y, e.x, e.y) < 20);
+        target?.applyDamage(burst * 0.4);
+      } else this.boss?.applyDamage(burst * 0.4);
+    }
+    void input;
+  }
+
+  private lifesteal(dmg: number): void {
+    const s = this.run.stats();
+    if (s.lifesteal > 0) {
+      this.run.currentHP = Math.min(s.maxHP, this.run.currentHP + dmg * s.lifesteal);
+    }
+  }
+
+  private addUltCharge(dmg: number): void {
+    this.ultCharge = Math.min(ULT_CHARGE_FULL, this.ultCharge + dmg * ULT_CHARGE_PER_DMG);
+  }
+
+  // ---------- Столкновения ----------
+  private onPlayerProjHitEnemy(proj: Projectile, enemy: Enemy): void {
+    if (!proj.active || !enemy.active || proj.payload.owner !== 'player') return;
+    if (proj.hitSet.has(enemy as unknown as number)) return;
+    const input = (proj as Projectile & { hitInput?: HitInput }).hitInput;
+    if (input) this.dealToEnemy(enemy, input);
+    proj.hitSet.add(enemy as unknown as number);
+    proj.payload.pierce -= 1;
+    if (proj.payload.pierce <= 0 && !proj.payload.boomerang) proj.kill();
+  }
+
+  private onEnemyProjHitPlayer(proj: Projectile): void {
+    if (!proj.active || proj.payload.owner !== 'enemy') return;
+    this.hitPlayer(proj.payload.raw, proj.payload.element);
+    proj.kill();
+  }
+
+  private onPlayerTouchEnemy(enemy: Enemy): void {
+    if (!enemy.active) return;
+    if (this.touchCd.has(enemy)) return;
+    this.touchCd.set(enemy, 700);
+    this.hitPlayer(enemy.dmg, enemy.def.element);
+  }
+
+  private hitPlayer(amount: number, _el: Element): void {
+    const dealt = this.player.takeDamage(amount, Math.random());
+    if (dealt > 0) {
+      this.cameras.main.shake(90, 0.006);
+      this.spawnDamageNumber(this.player.x, this.player.y - 18, dealt, false, 'none');
+    }
+  }
+
+  // ---------- Спавн ----------
+  private spawnLogic(dt: number): void {
+    this.spawnTimer -= dt;
+    const activeMobs = this.enemies.filter((e) => e.active).length;
+    if (this.spawnTimer <= 0 && activeMobs < 14 && !this.bossSpawned) {
+      this.spawnTimer = 1.2;
+      this.spawnWave();
+    }
+    // появление босса, когда игрок близко к внешнему краю
+    if (!this.bossSpawned) {
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.center.x, this.center.y);
+      if (d > GAMEPLAY.ring1Outer - 260) this.spawnBoss();
+    }
+  }
+
+  private spawnWave(): void {
+    const pool = MOBS_BY_RING[1];
+    const count = Phaser.Math.Between(2, 4);
+    for (let i = 0; i < count; i++) {
+      const def = Phaser.Utils.Array.GetRandom(pool);
+      const pos = this.randomSpawnPos();
+      if (!pos) continue;
+      this.spawnEnemy(def, pos.x, pos.y, def.ai === 'swarm' && Math.random() < 0.3);
+    }
+  }
+
+  private randomSpawnPos(): Phaser.Math.Vector2 | null {
+    // вокруг игрока, но вне хаба и в пределах кольца
+    for (let tries = 0; tries < 8; tries++) {
+      const ang = Math.random() * Math.PI * 2;
+      const dist = Phaser.Math.Between(320, 460);
+      const x = this.player.x + Math.cos(ang) * dist;
+      const y = this.player.y + Math.sin(ang) * dist;
+      const dc = Phaser.Math.Distance.Between(x, y, this.center.x, this.center.y);
+      if (dc > GAMEPLAY.hubRadius + 30 && dc < GAMEPLAY.ring1Outer - 20) {
+        return new Phaser.Math.Vector2(x, y);
+      }
+    }
+    return null;
+  }
+
+  private spawnEnemy(def: MobDef, x: number, y: number, elite = false): Enemy {
+    const e = this.getEnemy();
+    const base = RING_STATS[1];
+    const scale = ringLevelScale(1, this.run.levelState.level);
+    const eliteMul = elite ? { hp: 3, dmg: 1.5, loot: 3 } : { hp: 1, dmg: 1, loot: 1 };
+    e.spawn(
+      def,
+      x,
+      y,
+      {
+        hp: base.hp * def.hpMult * scale * eliteMul.hp,
+        dmg: base.dmg * def.dmgMult * scale * eliteMul.dmg,
+        armor: base.armor,
+        xp: base.xp * eliteMul.loot,
+        gold: base.gold * eliteMul.loot,
+      },
+      elite,
+    );
+    e.setDepth(6);
+    this.enemyGroup.add(e);
+    return e;
+  }
+
+  private spawnBoss(): void {
+    this.bossSpawned = true;
+    const def = BOSSES_BY_RING[1];
+    // очистить мелочь
+    const ang = Phaser.Math.Angle.Between(this.center.x, this.center.y, this.player.x, this.player.y);
+    const bx = this.center.x + Math.cos(ang) * (GAMEPLAY.ring1Outer - 120);
+    const by = this.center.y + Math.sin(ang) * (GAMEPLAY.ring1Outer - 120);
+    this.boss = new Boss(this);
+    const base = RING_STATS[1];
+    this.boss.spawn(def, bx, by, {
+      hp: base.hp * def.hpMult * 6,
+      dmg: base.dmg * def.dmgMult,
+      armor: base.armor * 1.5,
+    });
+    this.boss.setDepth(7);
+    this.physics.add.overlap(this.pProjGroup, this.boss, (proj) => {
+      const p = proj as Projectile;
+      if (!p.active || p.payload.owner !== 'player') return;
+      const input = (p as Projectile & { hitInput?: HitInput }).hitInput;
+      if (input) this.dealToBoss(input);
+      p.payload.pierce -= 1;
+      if (p.payload.pierce <= 0 && !p.payload.boomerang) p.kill();
+    });
+    this.physics.add.overlap(this.player, this.boss, () => {
+      if (this.bossTouchCd > 0) return;
+      this.bossTouchCd = 800;
+      this.hitPlayer(this.boss!.dmg, this.boss!.def.element);
+    });
+    this.flashBanner('⚠ БОСС: Древо-Страж', 3000);
+  }
+
+  // ---------- Смерть врагов/босса ----------
+  private killEnemy(e: Enemy): void {
+    if (!e.active) return;
+    const gained = this.run.gainXP(e.xp);
+    grantKillReward(this.run.wallet, e.gold, this.run.stats().goldPct, () => Math.random());
+    this.run.wallet.shards += Math.random() < 0.35 ? 1 : 0;
+    this.ultCharge = Math.min(ULT_CHARGE_FULL, this.ultCharge + ULT_CHARGE_PER_KILL);
+    if (this.run.loadout.relic?.flag === 'kill_heal') {
+      this.run.currentHP = Math.min(this.run.stats().maxHP, this.run.currentHP + this.run.stats().maxHP * 0.03);
+    }
+    if (gained > 0) this.onLevelUp(gained);
+    this.spawnPickupFx(e.x, e.y, 0xf0c040);
+    this.enemyGroup.remove(e);
+    this.touchCd.delete(e);
+    e.kill();
+  }
+
+  private onBossDead(): void {
+    if (!this.boss) return;
+    const bx = this.boss.x;
+    const by = this.boss.y;
+    this.run.gainXP(RING_STATS[1].xp * 80);
+    this.run.wallet.gold += 300;
+    this.run.wallet.bossCores += 1;
+    this.run.evolve(this.boss.def.reward.evolutionStage);
+    if (!this.run.bossesKilled.includes(this.boss.def.id)) this.run.bossesKilled.push(this.boss.def.id);
+    this.player.refreshFromStats();
+    this.boss.kill();
+    this.boss = null;
+    this.spawnPickupFx(bx, by, 0xffaa33);
+    this.flashBanner('Древо-Страж повержен! Эволюция класса I', 3000);
+    this.run.persist();
+    // Демо-победа среза → экран рекорда через 3с
+    this.time.delayedCall(3000, () => this.finishVictory());
+  }
+
+  private onLevelUp(levels: number): void {
+    this.player.refreshFromStats();
+    this.run.currentHP = this.run.stats().maxHP; // хил на левелапе
+    this.flashBanner(`Уровень ${this.run.levelState.level}! +${levels} очк. талантов/навыков (Tab)`, 1800);
+  }
+
+  // ---------- Телеграфы босса ----------
+  private updateTelegraphs(time: number): void {
+    for (const t of this.telegraphs) {
+      if (t.resolved) continue;
+      const age = time - t.born;
+      const p = Phaser.Math.Clamp(age / t.duration, 0, 1);
+      t.gfx.setScale(0.2 + 0.8 * p);
+      t.gfx.setFillStyle(COLORS.telegraph, 0.15 + 0.35 * p);
+      if (age >= t.duration) {
+        t.resolved = true;
+        // урон если игрок в зоне
+        if (Phaser.Math.Distance.Between(this.player.x, this.player.y, t.x, t.y) <= t.radius) {
+          this.hitPlayer(t.dmg, t.element);
+        }
+        const flash = this.add.circle(t.x, t.y, t.radius, COLORS.telegraph, 0.5).setDepth(4);
+        this.tweens.add({ targets: flash, alpha: 0, duration: 180, onComplete: () => flash.destroy() });
+        t.gfx.destroy();
+      }
+    }
+    this.telegraphs = this.telegraphs.filter((t) => !t.resolved);
+  }
+
+  private updateProjectilesCleanup(): void {
+    for (const p of [...this.pProj, ...this.eProj]) {
+      if (!p.active) continue;
+      p.tick(this.lastTime);
+      if (!p.active) continue;
+      const d = Phaser.Math.Distance.Between(p.x, p.y, this.center.x, this.center.y);
+      if (d > GAMEPLAY.worldRadius) p.kill();
+    }
+  }
+
+  // ---------- Контексты ИИ ----------
+  private enemyContext(): EnemyContext {
+    return {
+      playerPos: () => new Phaser.Math.Vector2(this.player.x, this.player.y),
+      shoot: (x, y, tx, ty, dmg, element) => this.fireEnemyProjectile(x, y, tx, ty, dmg, element),
+    };
+  }
+
+  private bossContext(): BossContext {
+    return {
+      playerPos: () => new Phaser.Math.Vector2(this.player.x, this.player.y),
+      telegraphCircle: (x, y, radius, delay, _onHit) => this.addTelegraph(x, y, radius, delay, this.boss!.dmg),
+      shootFan: (x, y, tx, ty, count, dmg, element) => this.enemyFan(x, y, tx, ty, count, dmg, element),
+      summonAdds: (x, y, count) => this.summonAdds(x, y, count),
+      onPhaseChange: () => this.flashBanner('Древо-Страж: ФАЗА 2 — корни по арене!', 2500),
+    };
+  }
+
+  private addTelegraph(x: number, y: number, radius: number, duration: number, dmg: number): void {
+    const gfx = this.add.circle(x, y, radius, COLORS.telegraph, 0.15).setDepth(4);
+    this.telegraphs.push({ x, y, radius, born: this.lastTime, duration, dmg, element: 'poison', gfx, resolved: false });
+  }
+
+  private enemyFan(x: number, y: number, tx: number, ty: number, count: number, dmg: number, element: Element): void {
+    const base = Phaser.Math.Angle.Between(x, y, tx, ty);
+    const spread = 0.9;
+    for (let i = 0; i < count; i++) {
+      const a = base + (i - (count - 1) / 2) * (spread / Math.max(1, count - 1));
+      this.spawnEnemyProjectileDir(x, y, Math.cos(a), Math.sin(a), dmg, element);
+    }
+  }
+
+  private summonAdds(x: number, y: number, count: number): void {
+    const def = MOBS_BY_RING[1].find((m) => m.id === 'goblin_melee')!;
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2;
+      this.spawnEnemy({ ...def, name: 'Саженец', color: 0x6f9f4a }, x + Math.cos(a) * 60, y + Math.sin(a) * 60);
+    }
+  }
+
+  private fireEnemyProjectile(x: number, y: number, tx: number, ty: number, dmg: number, element: Element): void {
+    const a = Phaser.Math.Angle.Between(x, y, tx, ty);
+    this.spawnEnemyProjectileDir(x, y, Math.cos(a), Math.sin(a), dmg, element);
+  }
+
+  private spawnEnemyProjectileDir(x: number, y: number, dx: number, dy: number, dmg: number, element: Element): void {
+    const proj = this.getProjectile(this.eProj, this.eProjGroup);
+    proj.fire(x, y, dx * GAMEPLAY.enemyProjectileSpeed, dy * GAMEPLAY.enemyProjectileSpeed, {
+      owner: 'enemy',
+      raw: dmg,
+      element,
+      isTrue: false,
+      crit: false,
+      pierce: 1,
+    }, 6);
+  }
+
+  // ---------- Пулы ----------
+  private getEnemy(): Enemy {
+    let e = this.enemies.find((x) => !x.active);
+    if (!e) {
+      e = new Enemy(this);
+      this.enemies.push(e);
+    }
+    return e;
+  }
+
+  private getProjectile(pool: Projectile[], group: Phaser.Physics.Arcade.Group): Projectile {
+    let p = pool.find((x) => !x.active);
+    if (!p) {
+      p = new Projectile(this);
+      pool.push(p);
+      group.add(p);
+    }
+    return p;
+  }
+
+  // ---------- Переходы ----------
+  private inHub(): boolean {
+    return Phaser.Math.Distance.Between(this.player.x, this.player.y, this.center.x, this.center.y) < GAMEPLAY.hubRadius;
+  }
+
+  private tryEnterHub(): void {
+    if (!this.inHub()) {
+      this.flashBanner('Хаб — в центре карты (синий круг)', 1500);
+      return;
+    }
+    this.run.persist();
+    this.scene.stop('UI');
+    this.scene.start('Hub', { fromStart: false });
+  }
+
+  private openMenu(): void {
+    this.scene.pause();
+    this.scene.launch('Menu', { from: 'World' });
+  }
+
+  private useHeal(): void {
+    const kind = this.run.selectedHeal;
+    const def = this.run.heals[kind];
+    if (def <= 0) return;
+    const healed = this.run.useHeal();
+    if (healed > 0 || kind === 'regen_flask') {
+      if (kind === 'regen_flask') {
+        this.regenFlask.remaining = 8;
+        this.regenFlask.ratePerSec = (this.run.stats().maxHP * 0.4) / 8;
+      }
+      this.spawnPickupFx(this.player.x, this.player.y, 0x55dd77);
+    }
+  }
+
+  private onPlayerDead(): void {
+    // Второе дыхание / Перо Феникса
+    const hasRevive =
+      !this.run.reviveUsed &&
+      (this.run.build.allocatedTalents.has('fort5') || this.run.loadout.relic?.flag === 'revive');
+    if (hasRevive) {
+      this.run.reviveUsed = true;
+      const pct = this.run.loadout.relic?.flag === 'revive' ? 0.5 : 0.4;
+      this.run.currentHP = this.run.stats().maxHP * pct;
+      this.player.iframeT = 1500;
+      this.flashBanner('Возрождение!', 1500);
+      return;
+    }
+    this.scene.stop('UI');
+    this.finishDeath();
+  }
+
+  private finishVictory(): void {
+    this.scene.stop('UI');
+    this.scene.start('End', { victory: true });
+  }
+
+  private finishDeath(): void {
+    this.scene.start('End', { victory: false });
+  }
+
+  // ---------- HUD/визуал ----------
+  private flashBanner(text: string, ms: number): void {
+    this.banner = text;
+    this.bannerT = ms;
+  }
+
+  private spawnDamageNumber(x: number, y: number, dmg: number, crit: boolean, el: Element, label?: string): void {
+    const color = label ? '#ffdd66' : crit ? '#ffcf3f' : el !== 'none' ? '#' + (ELEMENT_COLORS[el] ?? 0xffffff).toString(16).padStart(6, '0') : '#ffffff';
+    const t = this.add
+      .text(x + Phaser.Math.Between(-8, 8), y - 10, label ? `${label} ${Math.round(dmg)}` : `${Math.round(dmg)}`, {
+        fontFamily: 'system-ui',
+        fontSize: crit || label ? '16px' : '13px',
+        color,
+        fontStyle: crit || label ? 'bold' : 'normal',
+      })
+      .setDepth(20)
+      .setOrigin(0.5);
+    this.tweens.add({ targets: t, y: y - 44, alpha: 0, duration: 620, onComplete: () => t.destroy() });
+  }
+
+  private spawnPickupFx(x: number, y: number, color: number): void {
+    const c = this.add.circle(x, y, 6, color, 0.9).setDepth(15);
+    this.tweens.add({ targets: c, scale: 2, alpha: 0, duration: 300, onComplete: () => c.destroy() });
+  }
+
+  private pushHud(): void {
+    const s = this.run.stats();
+    this.registry.set('hud', {
+      hp: Math.max(0, this.run.currentHP),
+      maxHp: s.maxHP,
+      xp: this.run.levelState.xp,
+      xpNext: this.run.levelState.xpNext,
+      level: this.run.levelState.level,
+      levelCap: this.run.levelCap,
+      gold: this.run.wallet.gold,
+      energy: this.energy,
+      energyMax: ENERGY_MAX,
+      ultCharge: this.ultCharge,
+      ultFull: ULT_CHARGE_FULL,
+      dashCharges: this.player.dashCharges,
+      maxDash: this.player.maxDashCharges,
+      skillCd: Math.max(0, this.skillCd),
+      skillCdMax: 5000 * (1 - s.cdrPct),
+      healKind: this.run.selectedHeal,
+      healCount: this.run.heals[this.run.selectedHeal],
+      talentPoints: this.run.talentPoints,
+      skillPoints: this.run.skillPoints,
+      bossName: this.boss?.active ? 'Древо-Страж' : '',
+      bossHp: this.boss?.active ? this.boss.hp : 0,
+      bossMaxHp: this.boss?.active ? this.boss.maxHp : 1,
+      banner: this.bannerT > 0 ? this.banner : '',
+      inHub: this.inHub(),
+    });
+  }
+}
