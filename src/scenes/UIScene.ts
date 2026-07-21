@@ -24,8 +24,11 @@ export class UIScene extends Phaser.Scene {
   private bossBarBg!: Phaser.GameObjects.Rectangle;
   private bossBar!: Phaser.GameObjects.Rectangle;
   private minimap!: Phaser.GameObjects.Graphics;
-  private readonly mmR = 50; // радиус миникарты, px
-  private readonly mmC = new Phaser.Math.Vector2(70, 158); // центр миникарты на экране
+  private readonly mmR = 76; // радиус миникарты, px
+  private readonly mmC = new Phaser.Math.Vector2(94, 184); // центр миникарты на экране
+  private mapExpanded = false;
+  private mapCloseZone!: Phaser.GameObjects.Zone;
+  private mapHint!: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'UI', active: false });
@@ -79,8 +82,27 @@ export class UIScene extends Phaser.Scene {
     this.bossBarBg = this.add.rectangle(w / 2, 50, 420, 12, 0x3a1518).setOrigin(0.5).setVisible(false);
     this.bossBar = this.add.rectangle(w / 2 - 210, 50, 420, 12, 0xd64550).setOrigin(0, 0.5).setVisible(false);
 
-    // миникарта (рисуется в update)
+    // миникарта (рисуется в update) + разворот по тапу/клавише M
     this.minimap = this.add.graphics().setScrollFactor(0).setDepth(60);
+    this.mapHint = this.add
+      .text(this.scale.width / 2, 16, 'КАРТА — нажми, чтобы закрыть', { fontFamily: 'system-ui', fontSize: '15px', color: '#f0c040' })
+      .setOrigin(0.5, 0)
+      .setScrollFactor(0)
+      .setDepth(212)
+      .setVisible(false);
+    const zone = this.add
+      .zone(this.mmC.x, this.mmC.y, this.mmR * 2 + 16, this.mmR * 2 + 16)
+      .setScrollFactor(0)
+      .setDepth(72)
+      .setInteractive({ useHandCursor: true });
+    zone.on('pointerup', () => this.setMapExpanded(!this.mapExpanded));
+    this.mapCloseZone = this.add
+      .zone(0, 0, this.scale.width, this.scale.height)
+      .setOrigin(0)
+      .setScrollFactor(0)
+      .setDepth(205);
+    this.mapCloseZone.on('pointerup', () => this.setMapExpanded(false));
+    this.input.keyboard?.on('keydown-M', () => this.setMapExpanded(!this.mapExpanded));
 
     // сенсорные контролы — на тач-устройствах (или ?touch=1 для отладки)
     const forceTouch = typeof location !== 'undefined' && new URLSearchParams(location.search).has('touch');
@@ -139,12 +161,24 @@ export class UIScene extends Phaser.Scene {
     this.drawMinimap(hud);
   }
 
+  private setMapExpanded(v: boolean): void {
+    this.mapExpanded = v;
+    this.mapHint.setVisible(v);
+    this.mapHint.setPosition(this.scale.width / 2, 14);
+    this.minimap.setDepth(v ? 210 : 60);
+    if (v) this.mapCloseZone.setInteractive();
+    else this.mapCloseZone.disableInteractive();
+  }
+
   private drawMinimap(hud: Record<string, unknown>): void {
     const g = this.minimap;
     g.clear();
-    const cx = this.mmC.x;
-    const cy = this.mmC.y;
-    const R = this.mmR;
+    const exp = this.mapExpanded;
+    const R = exp ? Math.min(this.scale.width, this.scale.height) * 0.42 : this.mmR;
+    const cx = exp ? this.scale.width / 2 : this.mmC.x;
+    const cy = exp ? this.scale.height / 2 : this.mmC.y;
+    const dm = exp ? 1.8 : 1; // множитель размера точек
+    if (exp) g.fillStyle(0x05060c, 0.82).fillRect(0, 0, this.scale.width, this.scale.height);
     const wc = GAMEPLAY.worldRadius; // мир центрирован в (wc, wc)
     const scale = R / wc;
 
@@ -181,17 +215,17 @@ export class UIScene extends Phaser.Scene {
     for (const b of blips) {
       const p = toMap(b.x, b.y);
       if (p.out) continue;
-      g.fillStyle(b.elite ? 0xff8a3a : 0xd64550, 0.95).fillCircle(p.x, p.y, b.elite ? 2.4 : 1.6);
+      g.fillStyle(b.elite ? 0xff8a3a : 0xd64550, 0.95).fillCircle(p.x, p.y, (b.elite ? 3.0 : 2.1) * dm);
     }
     // босс
     if (hud.hasBoss) {
       const p = toMap(hud.bossX as number, hud.bossY as number);
-      g.fillStyle(0xff9a2a, 1).fillCircle(p.x, p.y, 3.4);
-      g.lineStyle(1, 0xffd080, 0.9).strokeCircle(p.x, p.y, 4.6);
+      g.fillStyle(0xff9a2a, 1).fillCircle(p.x, p.y, 4.4 * dm);
+      g.lineStyle(2, 0xffd080, 0.9).strokeCircle(p.x, p.y, 6 * dm);
     }
     // игрок
     const pp = toMap(hud.px as number, hud.py as number);
-    g.fillStyle(0xffffff, 1).fillCircle(pp.x, pp.y, 2.8);
-    g.lineStyle(1, 0x8fc0ff, 0.9).strokeCircle(pp.x, pp.y, 4.4);
+    g.fillStyle(0xffffff, 1).fillCircle(pp.x, pp.y, 3.6 * dm);
+    g.lineStyle(2, 0x8fc0ff, 0.95).strokeCircle(pp.x, pp.y, 5.6 * dm);
   }
 }

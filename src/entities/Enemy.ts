@@ -131,6 +131,9 @@ export class Enemy extends Phaser.Physics.Arcade.Image {
       return;
     }
 
+    // повернуться лицом к игроку
+    if (Math.abs(p.x - this.x) > 2) this.setFlipX(p.x < this.x);
+
     switch (this.def.ai) {
       case 'chaser':
       case 'swarm':
