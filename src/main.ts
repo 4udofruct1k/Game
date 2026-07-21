@@ -7,6 +7,15 @@ import { UIScene } from './scenes/UIScene';
 import { MenuScene } from './scenes/MenuScene';
 import { EndScene } from './scenes/EndScene';
 import { COLORS } from './data/theme';
+import { BASE_W, BASE_H } from './data/balance';
+
+// Базовый размер: фиксированная высота, ширина подстраивается под соотношение
+// экрана устройства — так канвас заполняет телефон почти без чёрных полос.
+// UI-сцены центрируют свой контент (ширина верстки = BASE_W) сдвигом камеры.
+function designWidth(): number {
+  const aspect = window.innerWidth / window.innerHeight;
+  return Math.round(Phaser.Math.Clamp(BASE_H * aspect, BASE_W, 1700));
+}
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -15,8 +24,8 @@ const config: Phaser.Types.Core.GameConfig = {
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
-    width: 960,
-    height: 640,
+    width: designWidth(),
+    height: BASE_H,
   },
   physics: {
     default: 'arcade',

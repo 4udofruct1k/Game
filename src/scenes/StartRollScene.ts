@@ -8,6 +8,8 @@ import { ELEMENT_NAMES } from '../data/elements';
 import { CLASS_STATS, CLASS_ABILITIES } from '../data/classes';
 import { WEAPON_ARCHETYPES } from '../data/weapons';
 import { listWorlds, listRecords, deleteWorld } from '../core/save';
+import { BASE_W } from '../data/balance';
+import { centerUICamera, addFullscreenButton, requestFullscreenOnFirstTap } from '../ui/layout';
 
 export class StartRollScene extends Phaser.Scene {
   private current!: StartLoadout;
@@ -20,8 +22,9 @@ export class StartRollScene extends Phaser.Scene {
   }
 
   create(): void {
-    const { width, height } = this.scale;
-    this.add.rectangle(width / 2, height / 2, width, height, 0x0a0a12);
+    const width = BASE_W;
+    // фон на весь экран (не зависит от центрирования)
+    this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x0a0a12).setOrigin(0).setScrollFactor(0);
     this.add
       .text(width / 2, 34, 'ROGUE RINGS', {
         fontFamily: 'system-ui',
@@ -45,6 +48,10 @@ export class StartRollScene extends Phaser.Scene {
     this.seedText = randomSeedText();
     this.current = rollStart(this.seedText);
     this.renderLoadout();
+
+    centerUICamera(this);
+    addFullscreenButton(this);
+    requestFullscreenOnFirstTap(this);
   }
 
   private labels = [

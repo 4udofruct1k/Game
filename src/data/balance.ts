@@ -1,5 +1,9 @@
 // §29–39 — числовые константы формул. Единственный источник правды для баланса.
 
+// Базовый размер верстки UI (канвас масштабируется под экран, см. main.ts).
+export const BASE_W = 960;
+export const BASE_H = 640;
+
 // §30 — AV.
 export const TIER_SCALE = 2.4; // ×за кольцо
 export const ENCHANT_PER_LEVEL = 0.08; // +8% статов за уровень зачара
@@ -54,15 +58,17 @@ export const SET_BONUS_6_MAIN = 0.25;
 
 // Общие геймплей-тюнинги среза (не из спеки напрямую — разумные дефолты).
 export const GAMEPLAY = {
-  dashSpeed: 520, // px/с
-  dashDuration: 160, // мс
+  dashSpeed: 720, // px/с
+  dashDuration: 170, // мс
   dashCooldown: 900, // мс
-  dashIFrames: 180, // мс неуязвимости на рывке
-  playerRadius: 12,
-  worldRadius: 1400, // радиус круглой карты
-  hubRadius: 260, // радиус безопасного хаба
-  ring1Inner: 320,
-  ring1Outer: 1300,
-  projectileSpeed: 460,
-  enemyProjectileSpeed: 240,
+  dashIFrames: 190, // мс неуязвимости на рывке
+  playerRadius: 13,
+  // Крупная карта: биомы-кольца ощутимо большие, до края бежать долго.
+  worldRadius: 3600, // радиус круглой карты
+  hubRadius: 520, // радиус безопасного хаба
+  ring1Inner: 640,
+  ring1Outer: 3200,
+  projectileSpeed: 620,
+  enemyProjectileSpeed: 320,
+  moveSpeedScale: 3.4, // множитель перевода базовой скорости в px/с
 };

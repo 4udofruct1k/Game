@@ -6,6 +6,8 @@ import { ARMOR_SLOTS, ARMOR_SLOT_NAMES, CLASS_SETS, type ArmorSlot } from '../da
 import { nativeWeight } from '../core/stats';
 import { ENCHANT_MAX } from '../data/balance';
 import { RARITY_NAMES } from '../data/rarity';
+import { BASE_W, BASE_H } from '../data/balance';
+import { centerUICamera, addFullscreenButton } from '../ui/layout';
 
 export class HubScene extends Phaser.Scene {
   private goldText!: Phaser.GameObjects.Text;
@@ -18,8 +20,9 @@ export class HubScene extends Phaser.Scene {
 
   create(): void {
     const run = getCurrentRun();
-    const { width, height } = this.scale;
-    this.add.rectangle(width / 2, height / 2, width, height, 0x10131f);
+    const width = BASE_W;
+    const height = BASE_H;
+    this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x10131f).setOrigin(0).setScrollFactor(0);
     this.add.text(width / 2, 24, 'ХАБ-ГОРОД · безопасная зона', { fontFamily: 'system-ui', fontSize: '22px', color: '#8fb0e0' }).setOrigin(0.5);
     this.goldText = this.add.text(width - 20, 20, '', { fontFamily: 'system-ui', fontSize: '16px', color: '#f0c040' }).setOrigin(1, 0);
     this.msgText = this.add.text(width / 2, height - 60, '', { fontFamily: 'system-ui', fontSize: '13px', color: '#9fe0a0' }).setOrigin(0.5);
@@ -39,6 +42,9 @@ export class HubScene extends Phaser.Scene {
     });
 
     this.refresh();
+
+    centerUICamera(this);
+    addFullscreenButton(this);
   }
 
   private section(x: number, y: number, title: string): void {
