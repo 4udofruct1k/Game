@@ -12,6 +12,8 @@ import {
 export interface EnemyContext {
   playerPos(): Phaser.Math.Vector2;
   shoot(x: number, y: number, tx: number, ty: number, dmg: number, element: Element): void;
+  // цель доступна для агро? (false, когда игрок в безопасном хабе / мёртв)
+  playerTargetable(): boolean;
 }
 
 export class Enemy extends Phaser.Physics.Arcade.Image {
@@ -30,6 +32,14 @@ export class Enemy extends Phaser.Physics.Arcade.Image {
   private chargeState: 'approach' | 'charging' | 'recover' = 'approach';
   private chargeTimer = 0;
   private hpBar?: Phaser.GameObjects.Rectangle;
+  // агро/детект
+  private aggro = false;
+  private detectRange = 300;
+  private leashRange = 640;
+  private homeX = 0;
+  private homeY = 0;
+  private wanderT = 0;
+  private wanderAng = 0;
 
   constructor(scene: Phaser.Scene) {
     super(scene, 0, 0, 'circle');
@@ -58,6 +68,14 @@ export class Enemy extends Phaser.Physics.Arcade.Image {
     this.status = createStatusState();
     this.atkTimer = 0;
     this.chargeState = 'approach';
+    // радиус обнаружения: стрелки/кастеры замечают дальше
+    this.detectRange = def.ai === 'shooter' || def.ai === 'caster' ? 380 : 300;
+    this.leashRange = this.detectRange + 360;
+    this.aggro = false;
+    this.homeX = x;
+    this.homeY = y;
+    this.wanderT = 0;
+    this.wanderAng = Math.random() * Math.PI * 2;
     this.enableBody(true, x, y, true, true);
     this.setActive(true).setVisible(true);
     this.setTint(def.color);
@@ -68,6 +86,7 @@ export class Enemy extends Phaser.Physics.Arcade.Image {
 
   applyDamage(amount: number): void {
     this.hp -= amount;
+    this.aggro = true; // получил урон → агрится (даже если игрок далеко/за пределом детекта)
   }
 
   get isDead(): boolean {
@@ -96,6 +115,22 @@ export class Enemy extends Phaser.Physics.Arcade.Image {
     const spd = this.speed * slow;
 
     this.atkTimer -= dt;
+
+    // --- агро/детект ---
+    const targetable = ctx.playerTargetable();
+    if (!targetable) {
+      this.aggro = false;
+    } else if (dist <= this.detectRange) {
+      this.aggro = true;
+    } else if (dist > this.leashRange) {
+      this.aggro = false;
+    }
+
+    if (!this.aggro) {
+      this.idle(dt);
+      this.updateHpBar();
+      return;
+    }
 
     switch (this.def.ai) {
       case 'chaser':
@@ -146,6 +181,32 @@ export class Enemy extends Phaser.Physics.Arcade.Image {
 
   private moveToward(ang: number, spd: number): void {
     (this.body as Phaser.Physics.Arcade.Body).setVelocity(Math.cos(ang) * spd, Math.sin(ang) * spd);
+  }
+
+  // Спокойное поведение вне агро: лёгкое блуждание у точки спавна.
+  private idle(dt: number): void {
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    const dHome = Phaser.Math.Distance.Between(this.x, this.y, this.homeX, this.homeY);
+    if (dHome > 120) {
+      // отошёл далеко — вернуться домой
+      this.moveToward(Phaser.Math.Angle.Between(this.x, this.y, this.homeX, this.homeY), this.speed * 0.5);
+      return;
+    }
+    this.wanderT -= dt;
+    if (this.wanderT <= 0) {
+      this.wanderT = Phaser.Math.FloatBetween(1.2, 3.0);
+      this.wanderAng = Math.random() * Math.PI * 2;
+      // иногда просто стоять
+      if (Math.random() < 0.4) {
+        body.setVelocity(0, 0);
+        this.wanderAng = NaN;
+      }
+    }
+    if (!Number.isNaN(this.wanderAng)) {
+      this.moveToward(this.wanderAng, this.speed * 0.25);
+    } else {
+      body.setVelocity(0, 0);
+    }
   }
 
   private updateHpBar(): void {

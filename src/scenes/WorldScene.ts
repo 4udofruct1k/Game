@@ -559,6 +559,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private hitPlayer(amount: number, _el: Element): void {
+    if (this.inHub()) return; // хаб — безопасная зона: урона нет
     const dealt = this.player.takeDamage(amount, Math.random());
     if (dealt > 0) {
       this.cameras.main.shake(90, 0.006);
@@ -740,6 +741,7 @@ export class WorldScene extends Phaser.Scene {
     return {
       playerPos: () => new Phaser.Math.Vector2(this.player.x, this.player.y),
       shoot: (x, y, tx, ty, dmg, element) => this.fireEnemyProjectile(x, y, tx, ty, dmg, element),
+      playerTargetable: () => !this.inHub() && this.run.currentHP > 0,
     };
   }
 
