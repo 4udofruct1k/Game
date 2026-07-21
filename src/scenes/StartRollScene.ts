@@ -87,7 +87,11 @@ export class StartRollScene extends Phaser.Scene {
       });
       this.panelTexts.push(val);
     });
+    // иконка оружия у строки «Оружие» (индекс 2)
+    this.weaponIcon = this.add.image(x + 400, y0 + 2 * rowH + 8, 'wpn_sword').setScale(0.22).setOrigin(0.5);
   }
+
+  private weaponIcon!: Phaser.GameObjects.Image;
 
   private buildButtons(): void {
     const y = 110 + 34 * this.labels.length + 16;
@@ -155,6 +159,8 @@ export class StartRollScene extends Phaser.Scene {
     set(0, `${cls.name} [${RARITY_NAMES[l.classRarity]}]`, l.classRarity);
     set(1, ab?.skill ?? l.abilitySkill);
     set(2, `${l.weapon.name} [${RARITY_NAMES[l.weapon.rarity]}]`, l.weapon.rarity);
+    const wk = 'wpn_' + l.weapon.archetype;
+    if (this.textures.exists(wk)) this.weaponIcon.setTexture(wk).setVisible(!spinning);
     set(3, l.element === 'none' ? 'нет' : ELEMENT_NAMES[l.element]);
     set(4, `${l.blessing.name} [${RARITY_NAMES[l.blessing.rarity]}]`, l.blessing.rarity);
     set(5, l.curse ? `${l.curse.name} [${RARITY_NAMES[l.curse.rarity]}]` : '—', l.curse?.rarity);

@@ -1,6 +1,9 @@
 import Phaser from 'phaser';
 import { MOBS_BY_RING } from '../data/mobs';
 import { BOSSES_BY_RING } from '../data/bosses';
+import { WEAPON_ARCHETYPES } from '../data/weapons';
+
+const WEAPON_ARCH_IDS = Object.keys(WEAPON_ARCHETYPES);
 
 // Генерация placeholder-текстур (круги/квадраты/кольца) — тинтуются на инстансах.
 export class BootScene extends Phaser.Scene {
@@ -17,6 +20,8 @@ export class BootScene extends Phaser.Scene {
     for (const b of Object.values(BOSSES_BY_RING)) {
       this.load.image('boss_' + b.id, 'sprites/boss_' + b.id + '.png');
     }
+    // иконки оружия по архетипам
+    for (const a of WEAPON_ARCH_IDS) this.load.image('wpn_' + a, 'sprites/wpn_' + a + '.png');
     // не валимся, если какой-то спрайт не загрузился
     this.load.on('loaderror', () => {});
   }
