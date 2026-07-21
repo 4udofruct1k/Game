@@ -18,6 +18,8 @@ import { rollStart } from '../startRoll';
 import { WEAPON_ITEMS } from '../../data/weapons';
 import { RARITY_MULT } from '../../data/rarity';
 import { TIER_SCALE } from '../../data/balance';
+import { CLASS_STATS, CLASS_ABILITIES } from '../../data/classes';
+import { CLASS_SKILL_TREES } from '../../data/skills';
 
 describe('RNG', () => {
   it('детерминирован от сида', () => {
@@ -186,10 +188,13 @@ describe('Стартовый ролл (§2)', () => {
     expect(a.race.id).toBe(b.race.id);
   });
 
-  it('класс всегда играбельный из среза', () => {
+  it('класс всегда валиден (любой из 30)', () => {
     for (let i = 0; i < 200; i++) {
       const l = rollStart('seed-' + i);
-      expect(['warrior', 'ranger', 'mage', 'rogue', 'pyromancer']).toContain(l.classId);
+      expect(Object.keys(CLASS_STATS)).toContain(l.classId);
+      // у каждого класса есть дерево навыков и способности
+      expect(CLASS_SKILL_TREES[l.classId]).toBeTruthy();
+      expect(CLASS_ABILITIES[l.classId]).toBeTruthy();
     }
   });
 });
