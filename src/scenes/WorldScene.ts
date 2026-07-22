@@ -16,6 +16,7 @@ import { grantKillReward } from '../core/economy';
 import { REACTIONS, type Element } from '../data/elements';
 import { CLASS_STATS } from '../data/classes';
 import { touch, consumeTouch } from '../core/touchInput';
+import { RNG, hashSeed } from '../core/rng';
 
 // Радиус, за которым мобы (не боссы) деспавнятся и переспавниваются ближе к игроку.
 const CULL_RANGE = 1500;
@@ -27,6 +28,17 @@ const MOB_HP_MUL = 5.0; // мобы «жирнее» (спавнятся ред�
 const MOB_DMG_MUL = 1.5;
 const MOB_LOOT_MUL = 3.5;
 const MAX_MOBS = 2; // одновременно на арене (вне босса)
+const BOSS_AGGRO_RANGE = 560; // подход к логову → босс агрится и начинается бой
+
+// Декор биомов по кольцам (индекс = кольцо). Разбрасывается чанками вокруг игрока.
+const DECO_SETS: Record<number, string[]> = {
+  1: ['deco_bush', 'deco_rock', 'prop_tree', 'deco_stump'],
+  2: ['deco_deadtree', 'deco_rock', 'deco_bones', 'deco_stump'],
+  3: ['deco_rock', 'deco_bones', 'deco_deadtree', 'deco_rock'],
+  4: ['deco_crystal', 'deco_column', 'deco_rock', 'deco_column'],
+  5: ['deco_crystal', 'deco_bones', 'deco_column', 'deco_crystal'],
+};
+const DECO_CELL = 620; // размер чанка декора (world px)
 
 interface Pickup {
   x: number;
@@ -56,6 +68,13 @@ export class WorldScene extends Phaser.Scene {
   private eProj: Projectile[] = [];
   private boss: Boss | null = null;
   private bossObj: Boss | null = null;
+  // фиксированные точки боссов (по одной на кольцо), всегда на карте
+  private bossAnchors: { ring: number; id: string; x: number; y: number }[] = [];
+  // декор биомов (чанки вокруг игрока) + сундуки
+  private decoCells = new Map<string, Phaser.GameObjects.Image[]>();
+  private chests: { x: number; y: number; gfx: Phaser.GameObjects.Image; opened: boolean; key: string }[] = [];
+  private openedChests = new Set<string>();
+  private decoTimer = 0;
   private telegraphs: Telegraph[] = [];
 
   private enemyGroup!: Phaser.Physics.Arcade.Group;
@@ -104,6 +123,7 @@ export class WorldScene extends Phaser.Scene {
     this.lastRing = 0;
     this.energy = ENERGY_MAX;
 
+    this.computeBossAnchors();
     this.drawGround();
     // текстура земли биома (тайл, скроллится с камерой; меняется при смене кольца)
     this.curBiome = -1;
@@ -179,6 +199,20 @@ export class WorldScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(-9);
     this.buildHub();
+    this.drawBossLairs();
+  }
+
+  // Видимые логова боссов на земле (тёмный круг + метка «череп»).
+  private drawBossLairs(): void {
+    const g = this.add.graphics().setDepth(-7);
+    for (const a of this.bossAnchors) {
+      if (this.run.bossesKilled.includes(a.id)) continue;
+      g.fillStyle(0x1a0e12, 0.55).fillCircle(a.x, a.y, 230);
+      g.lineStyle(5, 0xc0402a, 0.7).strokeCircle(a.x, a.y, 230);
+      this.add.text(a.x, a.y - 300, '☠ ' + BOSSES_BY_RING[a.ring].name, {
+        fontFamily: 'system-ui', fontSize: '26px', color: '#e88060', align: 'center',
+      }).setOrigin(0.5).setDepth(-6);
+    }
   }
 
   // Пропы хаба: домики/кузница/лавка/фонтан/портал/статуя/факелы — «безопасный город».
@@ -293,6 +327,8 @@ export class WorldScene extends Phaser.Scene {
     this.updateTelegraphs(time);
     this.updateProjectilesCleanup();
     this.updatePickups();
+    this.updateDecorations(dt);
+    this.updateChests();
 
     // спавн мобов + появление босса
     this.spawnLogic(dt);
@@ -400,8 +436,10 @@ export class WorldScene extends Phaser.Scene {
     else if (touch.enabled) return; // на тач-устройстве без цели не тратим атаку
 
     if (arch.ranged) {
+      this.player.playAttack('ranged');
       this.rangedAttack();
     } else {
+      this.player.playAttack('melee');
       this.meleeAttack();
     }
     void time;
@@ -687,6 +725,122 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // ---------- Спавн ----------
+  // Фиксированные логова боссов: по одному на кольцо, распределены по углам.
+  private computeBossAnchors(): void {
+    this.bossAnchors = [];
+    const angles = [-Math.PI / 2, -Math.PI / 6, Math.PI / 2, Math.PI, Math.PI / 3];
+    for (let ring = 1; ring <= RING_COUNT; ring++) {
+      const def = BOSSES_BY_RING[ring];
+      if (!def) continue;
+      const innerR = ringOuterRadius(ring - 1);
+      const r = innerR + (ringOuterRadius(ring) - innerR) * 0.62;
+      const a = angles[(ring - 1) % angles.length];
+      this.bossAnchors.push({
+        ring,
+        id: def.id,
+        x: this.center.x + Math.cos(a) * r,
+        y: this.center.y + Math.sin(a) * r,
+      });
+    }
+  }
+
+  // Декор биомов: генерируем чанки вокруг игрока, дальние — удаляем (без лагов).
+  private updateDecorations(dt: number): void {
+    this.decoTimer -= dt;
+    if (this.decoTimer > 0) return;
+    this.decoTimer = 0.35;
+    const cs = DECO_CELL;
+    const pcx = Math.floor(this.player.x / cs);
+    const pcy = Math.floor(this.player.y / cs);
+    const R = 2;
+    const needed = new Set<string>();
+    for (let gy = pcy - R; gy <= pcy + R; gy++) {
+      for (let gx = pcx - R; gx <= pcx + R; gx++) {
+        const key = gx + ',' + gy;
+        needed.add(key);
+        if (!this.decoCells.has(key)) this.buildDecoCell(gx, gy, key);
+      }
+    }
+    for (const key of [...this.decoCells.keys()]) {
+      if (needed.has(key)) continue;
+      for (const s of this.decoCells.get(key)!) s.destroy();
+      this.decoCells.delete(key);
+      // сундуки этого чанка убираем (открытые не вернутся — они в openedChests)
+      for (let i = this.chests.length - 1; i >= 0; i--) {
+        if (this.chests[i].key.startsWith(key + '#')) {
+          this.chests[i].gfx.destroy();
+          this.chests.splice(i, 1);
+        }
+      }
+    }
+  }
+
+  private buildDecoCell(gx: number, gy: number, key: string): void {
+    const cs = DECO_CELL;
+    const rng = new RNG(hashSeed('deco_' + gx + '_' + gy));
+    const sprites: Phaser.GameObjects.Image[] = [];
+    const count = rng.int(2, 4);
+    for (let i = 0; i < count; i++) {
+      const x = gx * cs + rng.float(0.08, 0.92) * cs;
+      const y = gy * cs + rng.float(0.08, 0.92) * cs;
+      const dc = Phaser.Math.Distance.Between(x, y, this.center.x, this.center.y);
+      const ring = this.ringOf(dc);
+      const set = DECO_SETS[ring];
+      if (!set) continue; // хаб/вне мира — без декора
+      // не заваливаем логова боссов
+      if (this.bossAnchors.some((a) => Phaser.Math.Distance.Between(x, y, a.x, a.y) < 260)) continue;
+      const tex = set[rng.int(0, set.length - 1)];
+      if (!this.textures.exists(tex)) continue;
+      const spr = this.add.image(x, y, tex).setOrigin(0.5, 0.9).setDepth(4).setScale(rng.float(0.85, 1.5));
+      if (tex === 'deco_crystal') spr.setTint(ring >= 5 ? 0xb070ff : 0x9fd8ff);
+      sprites.push(spr);
+    }
+    this.decoCells.set(key, sprites);
+    // редкий сундук в чанке (кроме хаба и уже открытых)
+    if (rng.chance(0.16)) {
+      const x = gx * cs + rng.float(0.2, 0.8) * cs;
+      const y = gy * cs + rng.float(0.2, 0.8) * cs;
+      const ring = this.ringOf(Phaser.Math.Distance.Between(x, y, this.center.x, this.center.y));
+      const ckey = key + '#chest';
+      if (ring >= 1 && ring <= RING_COUNT && !this.openedChests.has(ckey)) {
+        const gfx = this.add.image(x, y, 'deco_chest').setOrigin(0.5, 0.85).setDepth(5).setScale(1.2);
+        this.tweens.add({ targets: gfx, y: y - 5, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
+        this.chests.push({ x, y, gfx, opened: false, key: ckey });
+      }
+    }
+  }
+
+  // Открытие сундука при подходе: золото + шанс зелья/оружия.
+  private updateChests(): void {
+    for (const c of this.chests) {
+      if (c.opened) continue;
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, c.x, c.y) > 46) continue;
+      c.opened = true;
+      this.openedChests.add(c.key);
+      this.tweens.killTweensOf(c.gfx);
+      c.gfx.setTexture('deco_chest_open');
+      const ring = Math.max(1, this.ringOf(Phaser.Math.Distance.Between(c.x, c.y, this.center.x, this.center.y)));
+      const gold = 40 * ring + Math.floor(Math.random() * 40 * ring);
+      this.run.wallet.gold += gold;
+      let msg = `Сундук: +${gold}⦿`;
+      const roll = Math.random();
+      if (roll < 0.4) {
+        const k = Math.random() < 0.6 ? 'small_potion' : 'big_potion';
+        this.run.heals[k] += 1;
+        msg += ` · зелье`;
+      } else if (roll < 0.62) {
+        // оружие тира кольца
+        const pool = WEAPON_ITEMS.filter((w) => w.rarity === (['uncommon', 'rare', 'epic', 'legendary', 'mythic'] as Rarity[])[Math.min(4, ring - 1)]);
+        const weapon = Phaser.Utils.Array.GetRandom(pool.length ? pool : WEAPON_ITEMS);
+        this.spawnWeaponPickup(weapon, ring, c.x + 30, c.y);
+        msg += ` · оружие!`;
+      }
+      this.run.wallet.shards += 1;
+      this.spawnPickupFx(c.x, c.y, 0xffd24a);
+      this.flashBanner(msg, 2200);
+    }
+  }
+
   private spawnLogic(dt: number): void {
     const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.center.x, this.center.y);
     const ring = this.ringOf(dist);
@@ -709,13 +863,15 @@ export class WorldScene extends Phaser.Scene {
       this.spawnWave(ring, 1);
     }
 
-    // босс текущего кольца (если ещё не убит и не активен)
-    if (ring >= 1 && !this.boss) {
-      const def = BOSSES_BY_RING[ring];
-      if (def && !this.run.bossesKilled.includes(def.id)) {
-        const innerR = ringOuterRadius(ring - 1);
-        const trigger = innerR + (ringOuterRadius(ring) - innerR) * 0.55;
-        if (dist > trigger) this.spawnBoss(ring);
+    // босс агрится при подходе к своей фиксированной точке (логову)
+    if (!this.boss) {
+      for (const anc of this.bossAnchors) {
+        if (this.run.bossesKilled.includes(anc.id)) continue;
+        const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, anc.x, anc.y);
+        if (d < BOSS_AGGRO_RANGE) {
+          this.spawnBoss(anc.ring, anc.x, anc.y);
+          break;
+        }
       }
     }
   }
@@ -768,15 +924,9 @@ export class WorldScene extends Phaser.Scene {
     return e;
   }
 
-  private spawnBoss(ring: number): void {
+  private spawnBoss(ring: number, bx: number, by: number): void {
     const def = BOSSES_BY_RING[ring];
     this.activeBossRing = ring;
-    const ang = Phaser.Math.Angle.Between(this.center.x, this.center.y, this.player.x, this.player.y);
-    const pd = Phaser.Math.Distance.Between(this.center.x, this.center.y, this.player.x, this.player.y);
-    // босс появляется чуть впереди игрока (радиально), но не дальше внешнего края кольца
-    const r = Math.min(ringOuterRadius(ring) - 120, pd + 620);
-    const bx = this.center.x + Math.cos(ang) * r;
-    const by = this.center.y + Math.sin(ang) * r;
     // переиспользуем один инстанс босса (иначе утечка при уходе/возврате к боссу)
     if (!this.bossObj) this.bossObj = new Boss(this);
     this.boss = this.bossObj;
@@ -881,16 +1031,20 @@ export class WorldScene extends Phaser.Scene {
     const rarity = rarities[Math.min(4, ring - 1)];
     const pool = WEAPON_ITEMS.filter((w) => w.rarity === rarity);
     const weapon = Phaser.Utils.Array.GetRandom(pool.length ? pool : WEAPON_ITEMS);
+    this.spawnWeaponPickup(weapon, ring, x, y);
+  }
+
+  // Наземный пикап конкретного оружия (босс/сундук).
+  private spawnWeaponPickup(weapon: WeaponItemDef, tier: number, x: number, y: number): void {
     const color = ELEMENT_COLORS[weapon.element] ?? 0xf0c040;
     const ring2 = this.add.circle(0, 0, 18, color, 0.85).setStrokeStyle(3, 0xffffff, 0.9);
-    // иконка оружия по архетипу (фолбэк на глиф, если текстуры нет)
     const key = 'wpn_' + weapon.archetype;
     const icon: Phaser.GameObjects.GameObject = this.textures.exists(key)
       ? this.add.image(0, 0, key).setScale(0.42).setOrigin(0.5)
       : this.add.text(0, 0, '⚔', { fontFamily: 'system-ui', fontSize: '16px', color: '#fff' }).setOrigin(0.5);
     const c = this.add.container(x, y, [ring2, icon]).setDepth(9);
     this.tweens.add({ targets: c, y: y - 6, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
-    this.pickups.push({ x, y, weapon, tier: ring, gfx: c });
+    this.pickups.push({ x, y, weapon, tier, gfx: c });
   }
 
   private updatePickups(): void {
@@ -1182,6 +1336,10 @@ export class WorldScene extends Phaser.Scene {
       bossX: this.boss?.active ? this.boss.x : 0,
       bossY: this.boss?.active ? this.boss.y : 0,
       blips: this.enemies.filter((e) => e.active).slice(0, 60).map((e) => ({ x: e.x, y: e.y, elite: e.isElite })),
+      // фиксированные точки боссов (живых) — всегда на карте
+      bossPoints: this.bossAnchors
+        .filter((a) => !this.run.bossesKilled.includes(a.id))
+        .map((a) => ({ x: a.x, y: a.y, active: this.activeBossRing === a.ring })),
     });
   }
 }
