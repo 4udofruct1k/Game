@@ -935,6 +935,102 @@ def wa_shoulders(g, p=None):
 WORN = {'worn_helm': wa_helm, 'worn_chest': wa_chest, 'worn_shoulders': wa_shoulders}
 
 
+# ---- ГЕРОЙ ПО РАСАМ (детальный, 2 кадра ходьбы; голова/торс на общих якорях,
+#      чтобы броня-оверлеи совпадали). Front-вид, зеркалится движком по стороне. ----
+RACE_CFG = {
+    'human':     {'body': ((70,120,200),(34,66,130),(150,196,255)), 'skin': ((226,188,150),(180,140,110)), 'feat': 'hood', 'hair': (96,64,38)},
+    'beastkin':  {'body': ((150,110,70),(96,68,42),(198,160,120)), 'skin': ((214,182,142),(168,138,104)), 'feat': 'ears', 'hair': (110,78,46), 'tail': (120,88,54)},
+    'dwarf':     {'body': ((160,66,54),(100,36,32),(212,110,90)), 'skin': ((224,180,140),(178,138,104)), 'feat': 'beard', 'beard': (200,130,60)},
+    'undead':    {'body': ((92,104,98),(52,64,60),(150,162,150)), 'skin': ((182,196,182),(132,150,134)), 'feat': 'hood', 'hair': (70,84,74), 'eyeglow': (140,240,160)},
+    'demon':     {'body': ((156,46,42),(90,22,24),(216,92,72)), 'skin': ((196,86,74),(140,52,48)), 'feat': 'horns', 'horn': (52,26,28), 'eyeglow': (255,190,70), 'tail': (120,36,36)},
+    'elf':       {'body': ((66,150,120),(38,100,80),(150,214,180)), 'skin': ((226,206,170),(182,160,128)), 'feat': 'longears', 'hair': (210,196,150)},
+    'golem':     {'body': ((120,124,138),(70,74,88),(196,202,214)), 'skin': ((140,144,158),(92,96,110)), 'feat': 'stone', 'eyeglow': (150,224,255)},
+    'dragonkin': {'body': ((78,150,90),(44,100,54),(150,204,120)), 'skin': ((110,170,96),(70,120,64)), 'feat': 'scales', 'horn': (58,96,52), 'eyeglow': (240,220,90), 'tail': (70,130,80)},
+}
+
+def f_race(g, cfg, frame):
+    n = g.n; cx = n // 2
+    body, bsh, blt = cfg['body']
+    skin, sksh = cfg['skin']
+    feat = cfg['feat']
+    hy = n * 0.3
+    # хвост позади (звероид/демон/дракон)
+    if feat in ('ears', 'horns', 'scales'):
+        tc = cfg.get('tail', bsh)
+        g.line(cx + n*0.15, n*0.7, cx + n*0.28, n*0.58, tc, 3)
+        g.line(cx + n*0.28, n*0.58, cx + n*0.32, n*0.44, tc, 2)
+        if feat == 'horns':
+            g.tri([(cx+n*0.32, n*0.46), (cx+n*0.4, n*0.42), (cx+n*0.32, n*0.38)], cfg.get('eyeglow', (255,180,60)))
+    # ноги (шаг: одна поднята/выдвинута — чередуется по кадру)
+    legw = n * 0.055
+    def leg(x, lifted):
+        top = n*0.7; bot = n*0.9 - (n*0.05 if lifted else 0); fwd = n*0.04 if lifted else 0
+        g.rect(x-legw+fwd, top, x+legw+fwd, bot, bsh)
+        g.rect(x-legw+fwd, bot-n*0.035, x+legw+fwd+n*0.02, bot, (40,32,28))  # ботинок
+    leg(cx - n*0.07, frame == 1)
+    leg(cx + n*0.07, frame == 0)
+    # торс
+    g.rect(cx-n*0.15, n*0.46, cx+n*0.15, n*0.72, body)
+    g.rect(cx-n*0.15, n*0.46, cx-n*0.1, n*0.72, bsh)          # тень бока
+    g.rect(cx-n*0.15, n*0.46, cx+n*0.15, n*0.5, blt)          # верхний блик
+    g.rect(cx-n*0.15, n*0.63, cx+n*0.15, n*0.67, cfg.get('belt', (58,44,30)))  # пояс
+    g.rect(cx-n*0.03, n*0.63, cx+n*0.03, n*0.67, (210,168,66))  # пряжка
+    # руки (мах в противофазе ногам)
+    def arm(x, fwd):
+        sw = n*0.05 if fwd else -n*0.02
+        g.ellipse(x, n*0.52+sw, n*0.055, n*0.1, bsh)
+        g.ellipse(x, n*0.6+sw, n*0.042, n*0.042, skin)
+    arm(cx - n*0.185, frame == 0)
+    arm(cx + n*0.185, frame == 1)
+    # голова
+    if feat == 'stone':
+        g.rect(cx-n*0.15, hy-n*0.13, cx+n*0.15, hy+n*0.14, skin)
+    else:
+        g.ellipse(cx, hy, n*0.15, n*0.15, skin)
+    g.ellipse(cx-n*0.09, hy+n*0.02, n*0.05, n*0.06, sksh)     # тень щеки
+    gl = cfg.get('eyeglow')
+    eyes(g, hy, int(n*0.055), 1.2, gl if gl else (36,40,56), brow=bool(gl))
+    # черты рас
+    if feat == 'hood':
+        g.ellipse(cx, hy-n*0.07, n*0.15, n*0.08, cfg['hair'])          # волосы
+    elif feat == 'ears':
+        for s in (-1, 1):
+            g.tri([(cx+s*n*0.1, hy-n*0.1), (cx+s*n*0.18, hy-n*0.28), (cx+s*n*0.02, hy-n*0.08)], cfg.get('hair', bsh))
+    elif feat == 'beard':
+        g.ellipse(cx, hy+n*0.1, n*0.14, n*0.1, cfg['beard'])          # борода
+        g.rect(cx-n*0.16, hy-n*0.1, cx+n*0.16, hy-n*0.02, (150,158,172))
+        g.tri([(cx, hy-n*0.24), (cx-n*0.16, hy-n*0.06), (cx+n*0.16, hy-n*0.06)], (120,128,144))  # шлем
+    elif feat == 'horns':
+        for s in (-1, 1):
+            g.tri([(cx+s*n*0.08, hy-n*0.1), (cx+s*n*0.16, hy-n*0.3), (cx+s*n*0.02, hy-n*0.12)], cfg.get('horn', (60,30,30)))
+    elif feat == 'longears':
+        for s in (-1, 1):
+            g.tri([(cx+s*n*0.12, hy), (cx+s*n*0.32, hy-n*0.12), (cx+s*n*0.1, hy+n*0.05)], skin)
+        g.rect(cx-n*0.1, hy-n*0.11, cx+n*0.1, hy-n*0.07, (210,168,66))  # обруч
+    elif feat == 'stone':
+        g.line(cx-n*0.05, hy-n*0.05, cx-n*0.01, hy+n*0.1, cfg.get('eyeglow', (150,220,255)), 1)
+        g.ellipse(cx, n*0.57, n*0.045, n*0.055, cfg.get('eyeglow', (150,220,255)))  # ядро в груди
+    elif feat == 'scales':
+        g.tri([(cx-n*0.14, hy+n*0.03), (cx-n*0.26, hy+n*0.01), (cx-n*0.12, hy+n*0.11)], skin)  # морда
+        for s in (-1, 1):
+            g.tri([(cx+s*n*0.1, hy-n*0.08), (cx+s*n*0.16, hy-n*0.24), (cx+s*n*0.04, hy-n*0.06)], cfg.get('horn', (60,90,50)))
+        for yy in (0.52, 0.58, 0.64):
+            g.rect(cx-n*0.07, n*yy, cx+n*0.07, n*yy+n*0.02, blt)   # брюшные пластины
+
+def build_aura():
+    import math
+    size = 96; img = Image.new('RGBA', (size, size), (0, 0, 0, 0)); px = img.load()
+    c = size / 2
+    for y in range(size):
+        for x in range(size):
+            d = math.hypot(x - c, y - c) / c
+            if d < 1:
+                a = int(210 * (1 - d) ** 2)
+                ring = int(90 * max(0, 1 - abs(d - 0.82) / 0.14))  # мягкое кольцо по краю
+                px[x, y] = (255, 255, 255, min(255, a + ring))
+    img.save(os.path.join(OUT, 'aura.png'))
+
+
 def build_creature(name, fn, pal, kw, n, scale, mirror=True):
     random.seed(name)
     g = Grid(n)
@@ -982,8 +1078,17 @@ def main():
         build_flat(key, fn, 40, 4)
     for key, fn in WORN.items():
         build_creature(key, fn, PAL['steel'], {}, 48, 4)
-    print('готово: %d существ, %d боссов, %d оружий, %d снарядов, %d предметов, %d пропов, %d декора, %d брони'
-          % (len(SPRITES), len(BOSSES), len(WEAPONS), len(PROJECTILES), len(ITEMS), len(PROPS), len(DECOS), len(WORN)))
+    # герои по расам: 2 кадра ходьбы (без зеркалирования при генерации — движок сам)
+    for race, cfg in RACE_CFG.items():
+        for fr in (0, 1):
+            build_creature('hero_%s_%d' % (race, fr),
+                           (lambda g, p, cfg=cfg, fr=fr: f_race(g, cfg, fr)),
+                           None, {}, 48, 4, mirror=False)
+    # запасной 'hero' = человек, кадр 0
+    build_creature('hero', (lambda g, p: f_race(g, RACE_CFG['human'], 0)), None, {}, 48, 4, mirror=False)
+    build_aura()
+    print('готово: %d существ, %d боссов, %d оружий, %d снарядов, %d предметов, %d пропов, %d декора, %d брони, %d рас+аура'
+          % (len(SPRITES), len(BOSSES), len(WEAPONS), len(PROJECTILES), len(ITEMS), len(PROPS), len(DECOS), len(WORN), len(RACE_CFG)))
 
 
 if __name__ == '__main__':

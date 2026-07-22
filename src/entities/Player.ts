@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { Run } from '../core/run';
 import { GAMEPLAY } from '../data/balance';
-import { COLORS } from '../data/theme';
+import { COLORS, ELEMENT_COLORS } from '../data/theme';
+import { CLASS_STATS } from '../data/classes';
 import { applySprite } from './sprites';
 
 // тинт брони по редкости (оверлеи поверх героя)
@@ -33,6 +34,12 @@ export class Player extends Phaser.Physics.Arcade.Image {
   private atkT = 0;
   private atkDur = 0;
   private atkKind: 'melee' | 'ranged' = 'melee';
+  // анимация ходьбы (2 кадра) + наклон в сторону движения + аура
+  private walkFrames: [string, string] = ['hero', 'hero'];
+  private walkFrame = 0;
+  private walkT = 0;
+  private leanRot = 0;
+  private auraSpr!: Phaser.GameObjects.Image;
 
   constructor(scene: Phaser.Scene, x: number, y: number, run: Run) {
     super(scene, x, y, 'circle');
@@ -40,7 +47,13 @@ export class Player extends Phaser.Physics.Arcade.Image {
     scene.add.existing(this);
     scene.physics.add.existing(this);
     const r = GAMEPLAY.playerRadius;
-    applySprite(this, 'hero', COLORS.player, r, 4.6);
+    // текстура героя по расе (кадр 0), фолбэк на общий 'hero'
+    const race = run.loadout.race.id;
+    const f0 = 'hero_' + race + '_0';
+    this.walkFrames = scene.textures.exists(f0)
+      ? [f0, 'hero_' + race + '_1']
+      : ['hero', 'hero'];
+    applySprite(this, this.walkFrames[0], COLORS.player, r, 4.6);
     (this.body as Phaser.Physics.Arcade.Body).setDamping(true);
     const s = run.stats();
     this.baseSpeed = s.moveSpeed;
@@ -50,7 +63,30 @@ export class Player extends Phaser.Physics.Arcade.Image {
     this.refreshVisuals();
   }
 
+  // Цвет ауры: стихия оружия → стартовая инфузия → аффинитет класса.
+  private auraColor(): number {
+    const wEl = this.run.loadout.weapon.element;
+    const inf = this.run.loadout.element;
+    const el = wEl !== 'none' ? wEl : inf !== 'none' ? inf : CLASS_STATS[this.run.loadout.classId].affinity;
+    return ELEMENT_COLORS[el] ?? 0x9fb4ff;
+  }
+
   private createOverlays(scene: Phaser.Scene): void {
+    // аура по стихии/способности — светящийся ореол позади героя
+    this.auraSpr = scene.add
+      .image(this.x, this.y, scene.textures.exists('aura') ? 'aura' : 'circle')
+      .setDepth(9)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setTint(this.auraColor())
+      .setAlpha(0.4);
+    scene.tweens.add({
+      targets: this.auraSpr,
+      alpha: { from: 0.28, to: 0.55 },
+      duration: 1100,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.inOut',
+    });
     const mk = (key: string, depth: number): Phaser.GameObjects.Image => {
       const k = scene.textures.exists(key) ? key : 'circle';
       return scene.add.image(this.x, this.y, k).setDepth(depth).setVisible(false);
@@ -93,13 +129,15 @@ export class Player extends Phaser.Physics.Arcade.Image {
   private syncOverlays(): void {
     const flip = this.flipX;
     const a = this.alpha;
-    // броня повторяет позицию/масштаб/зеркало героя (рисовалась тем же холстом)
+    // аура позади героя (пульс альфы задан твином)
+    const w = this.displayWidth;
+    this.auraSpr.setPosition(this.x, this.y).setDisplaySize(w * 2.2, w * 2.2);
+    // броня повторяет позицию/масштаб/зеркало/наклон героя (рисовалась тем же холстом)
     for (const spr of [this.chestSpr, this.shouldersSpr, this.helmSpr]) {
       if (!spr.visible) continue;
-      spr.setPosition(this.x, this.y).setScale(this.scaleX, this.scaleY).setFlipX(flip).setAlpha(a);
+      spr.setPosition(this.x, this.y).setScale(this.scaleX, this.scaleY).setFlipX(flip).setRotation(this.rotation).setAlpha(a);
     }
     // оружие сбоку от героя, с наклоном; анимация атаки
-    const w = this.displayWidth;
     const side = flip ? -1 : 1;
     let ox = side * w * 0.34;
     let oy = w * 0.04;
@@ -180,7 +218,31 @@ export class Player extends Phaser.Physics.Arcade.Image {
     }
     this.setAlpha(this.invulnerable ? 0.5 : 1);
     if (this.atkT > 0) this.atkT -= dtMs;
+    this.animateWalk(dtMs);
     this.syncOverlays();
+  }
+
+  // Смена кадров ходьбы + наклон корпуса в сторону движения (зеркалится флипом).
+  private animateWalk(dtMs: number): void {
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    const spd = Math.hypot(body.velocity.x, body.velocity.y);
+    if (spd > 24) {
+      this.walkT += dtMs;
+      if (this.walkT > 130) {
+        this.walkT = 0;
+        this.walkFrame ^= 1;
+        this.setTexture(this.walkFrames[this.walkFrame]);
+      }
+      const lean = Phaser.Math.Clamp(body.velocity.x / (this.baseSpeed || 1), -1, 1) * 0.12;
+      this.leanRot += (lean - this.leanRot) * 0.25;
+    } else {
+      if (this.walkFrame !== 0) {
+        this.walkFrame = 0;
+        this.setTexture(this.walkFrames[0]);
+      }
+      this.leanRot *= 0.8;
+    }
+    this.setRotation(this.leanRot);
   }
 
   // Урон по игроку с учётом уворота/неуязвимости. Возвращает фактический урон.

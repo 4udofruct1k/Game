@@ -14,6 +14,12 @@ export class BootScene extends Phaser.Scene {
   preload(): void {
     // спрайты вырезаны из арт-борды (public/sprites). Если файла нет — фолбэк на круг.
     this.load.image('hero', 'sprites/hero.png');
+    // герои по расам (2 кадра ходьбы) + аура
+    for (const race of ['human', 'beastkin', 'dwarf', 'undead', 'demon', 'elf', 'golem', 'dragonkin']) {
+      this.load.image('hero_' + race + '_0', 'sprites/hero_' + race + '_0.png');
+      this.load.image('hero_' + race + '_1', 'sprites/hero_' + race + '_1.png');
+    }
+    this.load.image('aura', 'sprites/aura.png');
     for (const ring of Object.values(MOBS_BY_RING)) {
       for (const m of ring) this.load.image('mob_' + m.id, 'sprites/mob_' + m.id + '.png');
     }
