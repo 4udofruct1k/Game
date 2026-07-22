@@ -707,6 +707,112 @@ ITEMS = {
 }
 
 
+# ---- ПРОПЫ ХАБА и ОКРУЖЕНИЯ (фронт-вид, как в Soul Knight) ----
+def pr_house(g):
+    n = g.n; cx = n/2
+    wall = (200, 176, 140); wsh = (150, 128, 96); roof = (150, 70, 54); rsh = (108, 46, 36)
+    g.rect(cx-n*0.3, n*0.44, cx+n*0.3, n*0.86, wall)
+    g.rect(cx-n*0.3, n*0.44, cx-n*0.22, n*0.86, wsh)              # тень стены
+    g.tri([(cx-n*0.38, n*0.46), (cx, n*0.14), (cx+n*0.38, n*0.46)], roof)
+    g.tri([(cx-n*0.38, n*0.46), (cx-n*0.19, n*0.3), (cx, n*0.46)], rsh)
+    g.rect(cx-n*0.08, n*0.6, cx+n*0.08, n*0.86, (96, 62, 38))     # дверь
+    g.ellipse(cx+n*0.05, n*0.73, 1.2, 1.2, PAL['gold'][0])        # ручка
+    g.rect(cx+n*0.12, n*0.52, cx+n*0.24, n*0.64, (120, 200, 230)) # окно
+    g.line(cx+n*0.18, n*0.52, cx+n*0.18, n*0.64, wsh, 1)
+
+def pr_forge(g):
+    n = g.n; cx = n/2
+    st = (96, 100, 112); dk = (58, 60, 70)
+    g.rect(cx-n*0.3, n*0.4, cx+n*0.3, n*0.86, dk)                 # кузница
+    g.rect(cx+n*0.14, n*0.16, cx+n*0.26, n*0.4, st)               # труба
+    g.ellipse(cx+n*0.2, n*0.16, n*0.07, n*0.05, (90, 90, 100))    # дым
+    g.rect(cx-n*0.2, n*0.52, cx+n*0.06, n*0.76, (30, 26, 30))     # горн
+    g.ellipse(cx-n*0.07, n*0.66, n*0.1, n*0.08, (255, 150, 40))   # огонь
+    g.ellipse(cx-n*0.07, n*0.66, n*0.05, n*0.05, (255, 230, 120))
+    g.rect(cx+n*0.1, n*0.66, cx+n*0.26, n*0.72, st)               # наковальня
+    g.tri([(cx+n*0.26, n*0.66), (cx+n*0.32, n*0.68), (cx+n*0.26, n*0.7)], st)
+
+def pr_stall(g):
+    n = g.n; cx = n/2
+    wood = (150, 104, 60); wsh = (104, 72, 40)
+    g.rect(cx-n*0.34, n*0.24, cx+n*0.34, n*0.4, (200, 60, 60))    # тент
+    for k in range(6):                                            # полосы тента
+        x = cx-n*0.34 + k*n*0.113
+        if k % 2 == 0: g.rect(x, n*0.24, x+n*0.056, n*0.4, (230, 220, 210))
+    g.rect(cx-n*0.3, n*0.4, cx-n*0.24, n*0.84, wood)              # столбы
+    g.rect(cx+n*0.24, n*0.4, cx+n*0.3, n*0.84, wood)
+    g.rect(cx-n*0.34, n*0.6, cx+n*0.34, n*0.74, wood)             # прилавок
+    g.rect(cx-n*0.34, n*0.6, cx+n*0.34, n*0.64, wsh)
+    g.ellipse(cx-n*0.12, n*0.58, n*0.05, n*0.05, (210, 60, 60))   # товар (яблоки)
+    g.ellipse(cx+n*0.06, n*0.58, n*0.05, n*0.05, (240, 200, 70))
+
+def pr_fountain(g):
+    n = g.n; cx = n/2
+    st = (168, 172, 186); dk = (110, 114, 128); water = (90, 170, 220)
+    g.ellipse(cx, n*0.72, n*0.34, n*0.16, dk)                     # чаша (низ)
+    g.ellipse(cx, n*0.68, n*0.32, n*0.14, st)
+    g.ellipse(cx, n*0.68, n*0.24, n*0.1, water)                   # вода
+    g.rect(cx-n*0.05, n*0.4, cx+n*0.05, n*0.66, st)               # колонна
+    g.ellipse(cx, n*0.38, n*0.1, n*0.06, st)                      # верхняя чаша
+    g.ellipse(cx, n*0.38, n*0.06, n*0.03, water)
+    for s in (-1, 1):                                             # струи
+        g.line(cx, n*0.36, cx+s*n*0.14, n*0.56, (180, 220, 245), 1)
+
+def pr_portal(g):
+    n = g.n; cx = n/2
+    st = (120, 110, 140); dk = (78, 70, 100); glow = PAL['void'][3]
+    g.ellipse(cx, n*0.5, n*0.3, n*0.38, dk)                       # арка (камень)
+    g.ellipse(cx, n*0.5, n*0.22, n*0.3, (20, 12, 30))            # проём
+    g.ellipse(cx, n*0.5, n*0.18, n*0.26, glow)                    # свечение портала
+    g.ellipse(cx, n*0.5, n*0.1, n*0.16, (230, 180, 255))
+    g.rect(cx-n*0.32, n*0.78, cx+n*0.32, n*0.88, st)             # основание
+    for s in (-1, 1):
+        g.rect(cx+s*n*0.26, n*0.3, cx+s*n*0.32, n*0.8, st)       # колонны
+
+def pr_torch(g):
+    n = g.n; cx = n/2
+    g.rect(cx-n*0.05, n*0.4, cx+n*0.05, n*0.88, (110, 74, 44))    # столб
+    g.rect(cx-n*0.1, n*0.34, cx+n*0.1, n*0.44, (80, 84, 96))      # чаша
+    g.tri([(cx, n*0.12), (cx-n*0.11, n*0.38), (cx+n*0.11, n*0.38)], (255, 140, 40))
+    g.tri([(cx, n*0.2), (cx-n*0.06, n*0.36), (cx+n*0.06, n*0.36)], (255, 230, 120))
+
+def pr_barrel(g):
+    n = g.n; cx = n/2
+    wood = (150, 100, 56); band = (90, 92, 104)
+    g.ellipse(cx, n*0.5, n*0.2, n*0.32, wood)
+    g.rect(cx-n*0.2, n*0.32, cx+n*0.2, n*0.7, wood)
+    g.ellipse(cx, n*0.32, n*0.2, n*0.07, (180, 128, 74))         # верх
+    g.rect(cx-n*0.21, n*0.4, cx+n*0.21, n*0.44, band)            # обручи
+    g.rect(cx-n*0.21, n*0.58, cx+n*0.21, n*0.62, band)
+    g.line(cx-n*0.08, n*0.34, cx-n*0.08, n*0.68, (120, 80, 44), 1)
+
+def pr_statue(g):
+    n = g.n; cx = n/2
+    st = (176, 180, 194); dk = (120, 124, 138)
+    g.rect(cx-n*0.24, n*0.78, cx+n*0.24, n*0.9, dk)              # пьедестал
+    g.rect(cx-n*0.18, n*0.7, cx+n*0.18, n*0.8, st)
+    g.ellipse(cx, n*0.62, n*0.14, n*0.16, st)                    # тело
+    g.rect(cx-n*0.12, n*0.5, cx+n*0.12, n*0.72, st)
+    g.ellipse(cx, n*0.36, n*0.1, n*0.11, st)                     # голова
+    g.line(cx+n*0.12, n*0.3, cx+n*0.12, n*0.66, st, 2)           # меч/копьё вверх
+    g.tri([(cx+n*0.12, n*0.22), (cx+n*0.08, n*0.32), (cx+n*0.16, n*0.32)], (210, 214, 226))
+
+def pr_tree(g):
+    n = g.n; cx = n/2
+    trunk = (110, 74, 44); leaf = (70, 150, 66); lsh = (44, 104, 46); llt = (120, 194, 100)
+    g.rect(cx-n*0.06, n*0.56, cx+n*0.06, n*0.88, trunk)
+    g.ellipse(cx, n*0.4, n*0.28, n*0.26, leaf)
+    g.ellipse(cx-n*0.14, n*0.5, n*0.16, n*0.16, lsh)
+    g.ellipse(cx+n*0.12, n*0.34, n*0.16, n*0.16, llt)
+    g.ellipse(cx, n*0.3, n*0.14, n*0.13, llt)
+
+PROPS = {
+    'prop_house': pr_house, 'prop_forge': pr_forge, 'prop_stall': pr_stall,
+    'prop_fountain': pr_fountain, 'prop_portal': pr_portal, 'prop_torch': pr_torch,
+    'prop_barrel': pr_barrel, 'prop_statue': pr_statue, 'prop_tree': pr_tree,
+}
+
+
 def build_creature(name, fn, pal, kw, n, scale, mirror=True):
     random.seed(name)
     g = Grid(n)
@@ -748,8 +854,10 @@ def main():
         build_flat('proj_' + name, fn, 22, 4, do_shade=False)
     for key, fn in ITEMS.items():
         build_flat(key, fn, 30, 4)
-    print('готово: %d существ, %d боссов, %d оружий, %d снарядов, %d предметов'
-          % (len(SPRITES), len(BOSSES), len(WEAPONS), len(PROJECTILES), len(ITEMS)))
+    for key, fn in PROPS.items():
+        build_flat(key, fn, 44, 4)
+    print('готово: %d существ, %d боссов, %d оружий, %d снарядов, %d предметов, %d пропов'
+          % (len(SPRITES), len(BOSSES), len(WEAPONS), len(PROJECTILES), len(ITEMS), len(PROPS)))
 
 
 if __name__ == '__main__':
