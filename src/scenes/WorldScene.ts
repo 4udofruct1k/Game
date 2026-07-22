@@ -98,6 +98,7 @@ export class WorldScene extends Phaser.Scene {
   private bossColliders: Phaser.Physics.Arcade.Collider[] = [];
   private groundTex!: Phaser.GameObjects.TileSprite;
   private meleeFx!: Phaser.GameObjects.Graphics;
+  private slashFx!: Phaser.GameObjects.Image;
   private fxPool: Phaser.GameObjects.Arc[] = [];
   private fxIdx = 0;
   private curBiome = -1;
@@ -136,6 +137,12 @@ export class WorldScene extends Phaser.Scene {
 
     // переиспользуемый визуал взмаха + пул вспышек (без аллокаций на каждый удар)
     this.meleeFx = this.add.graphics().setDepth(9);
+    // росчерк удара (переиспользуемый спрайт, пивот у игрока)
+    this.slashFx = this.add
+      .image(0, 0, this.textures.exists('slash') ? 'slash' : 'circle')
+      .setDepth(11)
+      .setOrigin(0.18, 0.5)
+      .setVisible(false);
     this.fxPool = [];
     this.fxIdx = 0;
 
@@ -476,13 +483,36 @@ export class WorldScene extends Phaser.Scene {
       arch.pattern === 'melee_thrust' ? 0.4 : arch.pattern === 'melee_wide' ? 2.0 : arch.pattern === 'melee_flurry' ? 1.5 : 1.2;
     const hits = arch.pattern === 'melee_flurry' ? 2 : 1; // серия ударов
 
-    // визуал дуги — в переиспользуемый Graphics (без аллокаций)
+    // слабый конус зоны поражения (подсказка) + яркий росчерк-удар поверх
     const g = this.meleeFx;
     g.clear();
     g.fillStyle(0xffffff, 0.9);
     g.slice(this.player.x, this.player.y, range, angle - arc / 2, angle + arc / 2, false);
     g.fillPath();
-    g.setAlpha(0.28);
+    g.setAlpha(0.12);
+    // анимация самого удара: серп проносится дугой и гаснет
+    const el = this.run.loadout.weapon.element !== 'none' ? this.run.loadout.weapon.element : this.run.loadout.element;
+    const color = ELEMENT_COLORS[el] ?? 0xffffff;
+    const thrust = arch.pattern === 'melee_thrust';
+    const s = this.slashFx;
+    this.tweens.killTweensOf(s);
+    // масштаб так, чтобы радиус серпа ≈ дальность удара (не «нимб» вокруг)
+    const sc = range / 127;
+    s.setVisible(true)
+      .setPosition(this.player.x, this.player.y)
+      .setTint(color)
+      .setAlpha(0.95)
+      .setScale(sc * 0.9)
+      .setRotation(angle - arc * 0.5);
+    this.tweens.add({
+      targets: s,
+      rotation: angle + arc * 0.5,
+      alpha: 0,
+      scale: thrust ? sc * 0.85 : sc * 1.12,
+      duration: thrust ? 120 : 160,
+      ease: 'Quad.easeOut',
+      onComplete: () => s.setVisible(false),
+    });
 
     const input = this.baseHitInput(1.0);
     let hitAny = false;
@@ -748,26 +778,31 @@ export class WorldScene extends Phaser.Scene {
   private updateDecorations(dt: number): void {
     this.decoTimer -= dt;
     if (this.decoTimer > 0) return;
-    this.decoTimer = 0.35;
+    this.decoTimer = 0.2;
     const cs = DECO_CELL;
     const pcx = Math.floor(this.player.x / cs);
     const pcy = Math.floor(this.player.y / cs);
     const R = 2;
     const needed = new Set<string>();
+    const missing: { gx: number; gy: number; key: string; d: number }[] = [];
     for (let gy = pcy - R; gy <= pcy + R; gy++) {
       for (let gx = pcx - R; gx <= pcx + R; gx++) {
         const key = gx + ',' + gy;
         needed.add(key);
-        if (!this.decoCells.has(key)) this.buildDecoCell(gx, gy, key);
+        if (!this.decoCells.has(key)) missing.push({ gx, gy, key, d: Math.abs(gx - pcx) + Math.abs(gy - pcy) });
       }
     }
+    // строим не больше 3 чанков за тик (ближние первыми) — без спайка-фриза
+    missing.sort((a, b) => a.d - b.d);
+    for (const m of missing.slice(0, 3)) this.buildDecoCell(m.gx, m.gy, m.key);
+    // отсев дальних чанков
     for (const key of [...this.decoCells.keys()]) {
       if (needed.has(key)) continue;
       for (const s of this.decoCells.get(key)!) s.destroy();
       this.decoCells.delete(key);
-      // сундуки этого чанка убираем (открытые не вернутся — они в openedChests)
       for (let i = this.chests.length - 1; i >= 0; i--) {
         if (this.chests[i].key.startsWith(key + '#')) {
+          this.tweens.killTweensOf(this.chests[i].gfx);
           this.chests[i].gfx.destroy();
           this.chests.splice(i, 1);
         }
@@ -791,7 +826,9 @@ export class WorldScene extends Phaser.Scene {
       if (this.bossAnchors.some((a) => Phaser.Math.Distance.Between(x, y, a.x, a.y) < 260)) continue;
       const tex = set[rng.int(0, set.length - 1)];
       if (!this.textures.exists(tex)) continue;
-      const spr = this.add.image(x, y, tex).setOrigin(0.5, 0.9).setDepth(4).setScale(rng.float(0.85, 1.5));
+      const big = tex === 'prop_tree' || tex === 'deco_deadtree' || tex === 'deco_column';
+      const spr = this.add.image(x, y, tex).setOrigin(0.5, 0.9).setDepth(4)
+        .setScale(big ? rng.float(0.6, 0.85) : rng.float(0.4, 0.62));
       if (tex === 'deco_crystal') spr.setTint(ring >= 5 ? 0xb070ff : 0x9fd8ff);
       sprites.push(spr);
     }
@@ -803,7 +840,7 @@ export class WorldScene extends Phaser.Scene {
       const ring = this.ringOf(Phaser.Math.Distance.Between(x, y, this.center.x, this.center.y));
       const ckey = key + '#chest';
       if (ring >= 1 && ring <= RING_COUNT && !this.openedChests.has(ckey)) {
-        const gfx = this.add.image(x, y, 'deco_chest').setOrigin(0.5, 0.85).setDepth(5).setScale(1.2);
+        const gfx = this.add.image(x, y, 'deco_chest').setOrigin(0.5, 0.85).setDepth(5).setScale(0.5);
         this.tweens.add({ targets: gfx, y: y - 5, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
         this.chests.push({ x, y, gfx, opened: false, key: ckey });
       }

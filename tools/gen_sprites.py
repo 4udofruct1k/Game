@@ -631,6 +631,22 @@ def p_star(g):
     g.ellipse(c, c, n*0.12, n*0.12, (140, 144, 156))
     g.ellipse(c, c, n*0.05, n*0.05, (20, 20, 24))
 
+def p_slash(g):    # серп-росчерк удара (белый, тинтуется стихией; пивот слева)
+    import math
+    n = g.n; cx = n*0.18; cy = n*0.5; R = n*0.66
+    for k in range(72):
+        t = k/71
+        th = (t-0.5)*2.0
+        thick = (1 - abs(t-0.5)*2) * n*0.1 + 0.8       # сужение к концам
+        x = cx + math.cos(th)*R; y = cy + math.sin(th)*R
+        g.ellipse(x, y, thick, thick, (255,255,255))
+        g.ellipse(x-1, y, thick*0.5, thick*0.5, (255,255,255))
+    # внутренний край мягче
+    for k in range(50):
+        t = k/49; th = (t-0.5)*1.7
+        x = cx + math.cos(th)*R*0.8; y = cy + math.sin(th)*R*0.8
+        g.ellipse(x, y, 1.0, 1.0, (230,230,240))
+
 PROJECTILES = {'orb': p_orb, 'arrow': p_arrow, 'bolt': p_bolt, 'star': p_star}
 
 
@@ -1124,6 +1140,7 @@ def main():
     # запасной 'hero' = человек, кадр 0
     build_creature('hero', (lambda g, p: f_race(g, RACE_CFG['human'], 0)), None, {}, 48, 4, mirror=False)
     build_aura()
+    build_flat('slash', p_slash, 48, 4, do_shade=False)  # росчерк удара
     print('готово: %d существ, %d боссов, %d оружий, %d снарядов, %d предметов, %d пропов, %d декора, %d брони, %d рас+аура'
           % (len(SPRITES), len(BOSSES), len(WEAPONS), len(PROJECTILES), len(ITEMS), len(PROPS), len(DECOS), len(WORN), len(RACE_CFG)))
 
