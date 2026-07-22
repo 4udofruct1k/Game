@@ -455,10 +455,15 @@ export class WorldScene extends Phaser.Scene {
     // размер снаряда крупнее у посоха/маул-магии
     const projR = arch.id === 'staff' ? 15 : arch.id === 'bow' ? 10 : 12;
     const speedMul = arch.id === 'bow' ? 1.25 : 1;
+    // форма снаряда по архетипу оружия
+    const shape =
+      arch.id === 'bow' ? 'proj_arrow' :
+      arch.pattern === 'boomerang' || arch.id === 'thrown' ? 'proj_star' :
+      arch.id === 'spear' ? 'proj_bolt' : 'proj_orb';
     for (let i = 0; i < fanCount; i++) {
       const spread = (i - (fanCount - 1) / 2) * 0.2;
       const dir = facing.clone().rotate(spread);
-      this.firePlayerProjectile(dir, input, el, arch.pattern === 'boomerang', pierce, projR, speedMul);
+      this.firePlayerProjectile(dir, input, el, arch.pattern === 'boomerang', pierce, projR, speedMul, shape);
     }
   }
 
@@ -470,6 +475,7 @@ export class WorldScene extends Phaser.Scene {
     pierce: number,
     radius: number,
     speedMul: number,
+    shape = 'proj_orb',
   ): void {
     const proj = this.getProjectile(this.pProj, this.pProjGroup);
     const speed = GAMEPLAY.projectileSpeed * speedMul;
@@ -484,7 +490,7 @@ export class WorldScene extends Phaser.Scene {
       returnTo: boomerang ? () => new Phaser.Math.Vector2(this.player.x, this.player.y) : undefined,
     };
     (proj as Projectile & { hitInput?: HitInput }).hitInput = input;
-    proj.fire(this.player.x, this.player.y, dir.x * speed, dir.y * speed, payload, radius);
+    proj.fire(this.player.x, this.player.y, dir.x * speed, dir.y * speed, payload, radius, shape);
   }
 
   private castSkill(): void {
@@ -979,7 +985,7 @@ export class WorldScene extends Phaser.Scene {
       isTrue: false,
       crit: false,
       pierce: 1,
-    }, 6);
+    }, 8, 'proj_orb');
   }
 
   // ---------- Пулы ----------

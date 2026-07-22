@@ -36,6 +36,7 @@ export class Projectile extends Phaser.Physics.Arcade.Image {
     vy: number,
     payload: ProjectilePayload,
     radius: number,
+    shape = 'proj_orb',
   ): void {
     this.payload = payload;
     this.hitSet.clear();
@@ -43,20 +44,40 @@ export class Projectile extends Phaser.Physics.Arcade.Image {
     this.born = this.scene.time.now;
     this.enableBody(true, x, y, true, true);
     this.setActive(true).setVisible(true);
+    // форма снаряда (фолбэк на круг), тинт по стихии/владельцу
+    if (this.scene.textures.exists(shape)) this.setTexture(shape);
+    else this.setTexture('circle');
     const color = payload.owner === 'enemy' ? 0xff8080 : ELEMENT_COLORS[payload.element] ?? 0xffffff;
     this.setTint(color);
-    this.setDisplaySize(radius * 2, radius * 2);
-    (this.body as Phaser.Physics.Arcade.Body).setCircle(
-      32,
-      32 - 32,
-      32 - 32,
-    );
+    // направленные снаряды (стрела/болт/звезда) смотрят по вектору скорости
+    this.directional = shape === 'proj_arrow' || shape === 'proj_bolt';
+    if (shape === 'proj_star') {
+      this.spin = 0.4;
+    } else {
+      this.spin = 0;
+    }
+    if (this.directional) this.setRotation(Math.atan2(vy, vx));
+    else this.setRotation(0);
+    // круглый хитбокс по source-текстуре (Arcade масштабирует его вместе с displaySize)
+    const src = this.width || 64;
+    (this.body as Phaser.Physics.Arcade.Body).setCircle(src / 2, 0, 0);
+    // визуал крупнее хитбокса → «зона поражения» чуть щедрее
+    const disp = radius * (this.directional ? 2.6 : 2.2);
+    this.setDisplaySize(disp, disp);
     (this.body as Phaser.Physics.Arcade.Body).setVelocity(vx, vy);
   }
+
+  private directional = false;
+  private spin = 0;
 
   // Вызывается из цикла WorldScene каждый кадр (Arcade.Image не имеет preUpdate).
   tick(time: number): void {
     if (!this.active) return;
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    if (this.spin) this.rotation += this.spin;
+    else if (this.directional && (body.velocity.x || body.velocity.y)) {
+      this.setRotation(Math.atan2(body.velocity.y, body.velocity.x));
+    }
     const age = time - this.born;
     if (this.payload.boomerang && this.payload.returnTo) {
       if (this.outbound && age > this.life * 0.4) {

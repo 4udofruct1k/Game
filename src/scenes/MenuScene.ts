@@ -180,5 +180,17 @@ export class MenuScene extends Phaser.Scene {
     });
     lines.push('', 'МАТЕРИАЛЫ', `Осколки ${run.wallet.shards} · Пыль ${run.wallet.rerollDust} · Ядра ${run.wallet.bossCores}`);
     this.add2(this.add.text(60, 90, lines.join('\n'), { fontFamily: 'system-ui', fontSize: '14px', color: '#dfe0ee', lineSpacing: 5 }));
+
+    // визуальная полоса экипировки: оружие + надетая броня
+    const strip: string[] = ['wpn_' + l.weapon.archetype];
+    for (const slot of Object.keys(run.build.armor)) strip.push('armor_' + slot);
+    this.add2(this.add.text(360, 90, 'ЭКИПИРОВКА', { fontFamily: 'system-ui', fontSize: '13px', color: '#9a9ab0' }));
+    strip.forEach((key, i) => {
+      if (!this.textures.exists(key)) return;
+      const cellX = 372 + (i % 4) * 58;
+      const cellY = 128 + Math.floor(i / 4) * 58;
+      this.add2(this.add.rectangle(cellX, cellY, 50, 50, 0x1a1e2c).setStrokeStyle(1, 0x3a4054));
+      this.add2(this.add.image(cellX, cellY, key).setScale(0.34).setOrigin(0.5));
+    });
   }
 }
