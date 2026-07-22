@@ -178,6 +178,36 @@ export class WorldScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setDepth(-9);
+    this.buildHub();
+  }
+
+  // Пропы хаба: домики/кузница/лавка/фонтан/портал/статуя/факелы — «безопасный город».
+  private buildHub(): void {
+    const cx = this.center.x;
+    const cy = this.center.y;
+    const place = (key: string, dx: number, dy: number, scale = 1.3): void => {
+      if (!this.textures.exists(key)) return;
+      this.add.image(cx + dx, cy + dy, key).setOrigin(0.5, 0.92).setScale(scale).setDepth(5);
+    };
+    place('prop_fountain', 0, 30, 1.6);
+    place('prop_statue', -150, -70);
+    place('prop_house', -300, -130);
+    place('prop_house', 270, -150);
+    place('prop_house', 70, -290);
+    place('prop_forge', -330, 130);
+    place('prop_stall', 310, 130);
+    place('prop_portal', -70, 320, 1.4);
+    place('prop_tree', -390, -30, 1.1);
+    place('prop_tree', 390, 30, 1.1);
+    place('prop_tree', 150, 250, 1.1);
+    place('prop_barrel', -250, 200, 1.0);
+    place('prop_barrel', -215, 212, 0.9);
+    place('prop_barrel', 250, -60, 0.95);
+    // факелы по периметру безопасной зоны
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      place('prop_torch', Math.cos(a) * 470, Math.sin(a) * 470, 1.0);
+    }
   }
 
   private setupInput(): void {

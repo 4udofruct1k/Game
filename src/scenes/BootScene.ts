@@ -27,6 +27,9 @@ export class BootScene extends Phaser.Scene {
     // зелья и броня по слотам
     for (const k of ['small_potion', 'big_potion', 'regen_flask', 'elixir']) this.load.image('item_' + k, 'sprites/item_' + k + '.png');
     for (const s of ['helm', 'shoulders', 'chest', 'gloves', 'boots', 'belt']) this.load.image('armor_' + s, 'sprites/armor_' + s + '.png');
+    // пропы хаба
+    for (const pr of ['house', 'forge', 'stall', 'fountain', 'portal', 'torch', 'barrel', 'statue', 'tree'])
+      this.load.image('prop_' + pr, 'sprites/prop_' + pr + '.png');
     // не валимся, если какой-то спрайт не загрузился
     this.load.on('loaderror', () => {});
   }
