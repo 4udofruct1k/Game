@@ -599,6 +599,114 @@ WEAPONS = {
 }
 
 
+# ---- СНАРЯДЫ (белые/серые, тинтуются стихией в движке; смотрят вправо +X) ----
+def p_orb(g):
+    n = g.n; c = n/2
+    g.ellipse(c, c, n*0.34, n*0.34, (150, 150, 160))
+    g.ellipse(c, c, n*0.24, n*0.24, (225, 225, 235))
+    g.ellipse(c-n*0.06, c-n*0.06, n*0.12, n*0.12, (255, 255, 255))
+
+def p_arrow(g):
+    n = g.n; c = n/2
+    st = (210, 214, 224); wd = (150, 110, 70)
+    g.rect(n*0.16, c-1, n*0.72, c+1, wd)                    # древко
+    g.tri([(n*0.9, c), (n*0.6, c-n*0.16), (n*0.6, c+n*0.16)], st)  # наконечник
+    g.tri([(n*0.1, c-n*0.14), (n*0.28, c), (n*0.1, c+n*0.14)], (230, 230, 235))  # оперение
+
+def p_bolt(g):
+    n = g.n; c = n/2
+    g.tri([(n*0.92, c), (n*0.4, c-n*0.2), (n*0.2, c)], (225, 225, 235))
+    g.tri([(n*0.92, c), (n*0.4, c+n*0.2), (n*0.2, c)], (180, 182, 196))
+
+def p_star(g):
+    import math
+    n = g.n; c = n/2
+    st = (215, 219, 230)
+    for a in range(4):
+        ang = a*math.pi/2
+        ex = c+math.cos(ang)*n*0.42; ey = c+math.sin(ang)*n*0.42
+        g.tri([(c+math.cos(ang-0.5)*n*0.14, c+math.sin(ang-0.5)*n*0.14),
+               (c+math.cos(ang+0.5)*n*0.14, c+math.sin(ang+0.5)*n*0.14),
+               (ex, ey)], st)
+    g.ellipse(c, c, n*0.12, n*0.12, (140, 144, 156))
+    g.ellipse(c, c, n*0.05, n*0.05, (20, 20, 24))
+
+PROJECTILES = {'orb': p_orb, 'arrow': p_arrow, 'bolt': p_bolt, 'star': p_star}
+
+
+# ---- ЗЕЛЬЯ и БРОНЯ (полноцветные иконки) ----
+def _flask(g, liquid, big=False):
+    n = g.n; cx = n/2
+    glass = (200, 214, 224)
+    top = n*0.2 if not big else n*0.16
+    g.rect(cx-n*0.06, top, cx+n*0.06, n*0.34, glass)       # горлышко
+    g.rect(cx-n*0.05, top-n*0.06, cx+n*0.05, top, (150, 110, 70))  # пробка
+    g.ellipse(cx, n*0.62, n*0.24, n*0.26, glass)           # колба
+    g.ellipse(cx, n*0.64, n*0.19, n*0.2, liquid)           # жидкость
+    g.ellipse(cx-n*0.08, n*0.54, n*0.05, n*0.07, (255, 255, 255))  # блик
+
+def i_small_potion(g): _flask(g, (210, 60, 60))
+def i_big_potion(g):   _flask(g, (230, 50, 70), big=True)
+def i_regen_flask(g):  _flask(g, (80, 200, 110))
+def i_elixir(g):
+    n = g.n; cx = n/2
+    _flask(g, (240, 200, 70))
+    g.ellipse(cx+n*0.14, n*0.34, 1.6, 1.6, (255, 255, 210))   # искры
+    g.ellipse(cx-n*0.16, n*0.46, 1.3, 1.3, (255, 255, 210))
+
+def i_helm(g):
+    n = g.n; cx = n/2; s = PAL['steel']
+    g.ellipse(cx, n*0.44, n*0.26, n*0.24, s[0])
+    g.rect(cx-n*0.26, n*0.44, cx+n*0.26, n*0.6, s[0])
+    g.rect(cx-n*0.26, n*0.56, cx+n*0.26, n*0.62, s[1])       # низ
+    g.rect(cx-0.8, n*0.24, cx+0.8, n*0.6, s[2])              # гребень-щель
+    g.rect(cx-n*0.24, n*0.5, cx+n*0.24, n*0.54, (20,20,26))  # прорезь для глаз
+
+def i_shoulders(g):
+    n = g.n; cx = n/2; s = PAL['steel']
+    for sx in (-1, 1):
+        g.ellipse(cx+sx*n*0.18, n*0.5, n*0.18, n*0.16, s[0])
+        g.ellipse(cx+sx*n*0.18, n*0.44, n*0.16, n*0.1, s[2])
+        g.tri([(cx+sx*n*0.3, n*0.4),(cx+sx*n*0.42, n*0.46),(cx+sx*n*0.26, n*0.5)], s[1])  # шип
+
+def i_chest(g):
+    n = g.n; cx = n/2; s = PAL['steel']
+    g.tri([(cx-n*0.28, n*0.32),(cx+n*0.28, n*0.32),(cx, n*0.8)], s[0])
+    g.rect(cx-n*0.26, n*0.3, cx+n*0.26, n*0.42, s[0])
+    g.line(cx, n*0.34, cx, n*0.7, s[1], 1.4)                 # центральный шов
+    g.ellipse(cx-n*0.12, n*0.42, n*0.05, n*0.06, s[2])       # грудная пластина-блик
+
+def i_gloves(g):
+    n = g.n; cx = n/2; s = PAL['steel']
+    g.rect(cx-n*0.16, n*0.4, cx+n*0.16, n*0.66, s[0])        # кисть
+    for i in range(4):                                       # пальцы
+        gx = cx-n*0.14 + i*n*0.095
+        g.rect(gx, n*0.28, gx+n*0.06, n*0.42, s[0])
+    g.rect(cx-n*0.2, n*0.66, cx+n*0.2, n*0.74, s[1])         # манжет
+    g.rect(cx-n*0.16, n*0.46, cx+n*0.16, n*0.5, s[2])
+
+def i_boots(g):
+    n = g.n; cx = n/2; s = PAL['steel']; lth = (110, 74, 44)
+    g.rect(cx-n*0.1, n*0.24, cx+n*0.1, n*0.62, lth)          # голенище
+    g.rect(cx-n*0.1, n*0.58, cx+n*0.28, n*0.72, lth)         # стопа
+    g.rect(cx-n*0.1, n*0.68, cx+n*0.3, n*0.76, s[1])         # подошва
+    g.rect(cx-n*0.1, n*0.36, cx+n*0.1, n*0.4, s[2])
+
+def i_belt(g):
+    n = g.n; cx = n/2; lth = (120, 80, 46)
+    g.rect(n*0.12, n*0.44, n*0.88, n*0.58, lth)              # ремень
+    g.rect(n*0.12, n*0.44, n*0.88, n*0.48, (160, 112, 66))
+    g.rect(cx-n*0.1, n*0.4, cx+n*0.1, n*0.62, PAL['gold'][0])  # пряжка
+    g.rect(cx-n*0.05, n*0.46, cx+n*0.05, n*0.56, (30, 26, 20))
+
+ITEMS = {
+    'item_small_potion': i_small_potion, 'item_big_potion': i_big_potion,
+    'item_regen_flask': i_regen_flask, 'item_elixir': i_elixir,
+    'armor_helm': i_helm, 'armor_shoulders': i_shoulders, 'armor_chest': i_chest,
+    'armor_gloves': i_gloves, 'armor_boots': i_boots, 'armor_belt': i_belt,
+}
+
+
 def build_creature(name, fn, pal, kw, n, scale, mirror=True):
     random.seed(name)
     g = Grid(n)
@@ -618,6 +726,15 @@ def build_weapon(name, fn, n=32, scale=4):
     g.render(scale).save(os.path.join(OUT, 'wpn_' + name + '.png'))
 
 
+def build_flat(key, fn, n, scale, do_shade=True):
+    g = Grid(n)
+    fn(g)
+    if do_shade:
+        g.shade()
+    g.outline()
+    g.render(scale).save(os.path.join(OUT, key + '.png'))
+
+
 def main():
     for name, (fn, pal, kw) in SPRITES.items():
         f = f_hero if name == 'hero' else fn
@@ -627,7 +744,12 @@ def main():
         build_creature('boss_' + name, fn, pal, kw, 60, 5)
     for name, fn in WEAPONS.items():
         build_weapon(name, fn)
-    print('готово: %d существ, %d боссов, %d оружий' % (len(SPRITES), len(BOSSES), len(WEAPONS)))
+    for name, fn in PROJECTILES.items():
+        build_flat('proj_' + name, fn, 22, 4, do_shade=False)
+    for key, fn in ITEMS.items():
+        build_flat(key, fn, 30, 4)
+    print('готово: %d существ, %d боссов, %d оружий, %d снарядов, %d предметов'
+          % (len(SPRITES), len(BOSSES), len(WEAPONS), len(PROJECTILES), len(ITEMS)))
 
 
 if __name__ == '__main__':

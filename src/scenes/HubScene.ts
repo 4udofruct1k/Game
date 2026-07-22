@@ -57,7 +57,8 @@ export class HubScene extends Phaser.Scene {
     kinds.forEach((k, i) => {
       const def = HEALS[k];
       const yy = y + 30 + i * 44;
-      const label = this.add.text(x, yy, '', { fontFamily: 'system-ui', fontSize: '13px', color: '#e0e0ee' });
+      this.add.image(x + 12, yy + 10, 'item_' + k).setOrigin(0.5).setScale(0.22);
+      const label = this.add.text(x + 30, yy, '', { fontFamily: 'system-ui', fontSize: '13px', color: '#e0e0ee' });
       const btn = this.makeButton(x + 180, yy - 4, 90, 28, `${def.price}⦿`, 0x394b8a, () => {
         const run = getCurrentRun();
         if (run.wallet.gold >= def.price) {
@@ -88,7 +89,8 @@ export class HubScene extends Phaser.Scene {
     ARMOR_SLOTS.forEach((slot: ArmorSlot, i) => {
       const yy = y + 30 + i * 38;
       const price = armorPrice(1, 'common');
-      const label = this.add.text(x, yy, '', { fontFamily: 'system-ui', fontSize: '12px', color: '#e0e0ee' });
+      this.add.image(x + 11, yy + 7, 'armor_' + slot).setOrigin(0.5).setScale(0.22);
+      const label = this.add.text(x + 28, yy, '', { fontFamily: 'system-ui', fontSize: '12px', color: '#e0e0ee' });
       this.makeButton(x + 210, yy - 4, 80, 26, `${price}⦿`, 0x394b8a, () => {
         if (run.wallet.gold >= price) {
           run.wallet.gold -= price;

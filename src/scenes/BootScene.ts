@@ -22,6 +22,11 @@ export class BootScene extends Phaser.Scene {
     }
     // иконки оружия по архетипам
     for (const a of WEAPON_ARCH_IDS) this.load.image('wpn_' + a, 'sprites/wpn_' + a + '.png');
+    // снаряды (тинтуются стихией)
+    for (const s of ['orb', 'arrow', 'bolt', 'star']) this.load.image('proj_' + s, 'sprites/proj_' + s + '.png');
+    // зелья и броня по слотам
+    for (const k of ['small_potion', 'big_potion', 'regen_flask', 'elixir']) this.load.image('item_' + k, 'sprites/item_' + k + '.png');
+    for (const s of ['helm', 'shoulders', 'chest', 'gloves', 'boots', 'belt']) this.load.image('armor_' + s, 'sprites/armor_' + s + '.png');
     // не валимся, если какой-то спрайт не загрузился
     this.load.on('loaderror', () => {});
   }
