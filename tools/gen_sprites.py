@@ -813,6 +813,128 @@ PROPS = {
 }
 
 
+# ---- ДЕКОР БИОМОВ (разбросан по кольцам; часть тинтуется в движке) ----
+def d_rock(g):
+    n = g.n; cx = n/2
+    st = (128, 132, 146); dk = (86, 90, 104)
+    g.ellipse(cx, n*0.64, n*0.3, n*0.2, st)
+    g.ellipse(cx-n*0.18, n*0.6, n*0.14, n*0.12, dk)
+    g.ellipse(cx+n*0.12, n*0.54, n*0.16, n*0.14, st)
+    g.line(cx-n*0.06, n*0.52, cx+n*0.02, n*0.7, dk, 1)
+
+def d_bush(g):
+    n = g.n; cx = n/2
+    leaf = (70, 150, 66); lsh = (44, 104, 46); llt = (120, 194, 100)
+    g.ellipse(cx, n*0.62, n*0.26, n*0.2, leaf)
+    g.ellipse(cx-n*0.14, n*0.6, n*0.14, n*0.13, lsh)
+    g.ellipse(cx+n*0.1, n*0.54, n*0.14, n*0.13, llt)
+    g.ellipse(cx, n*0.5, n*0.12, n*0.11, llt)
+
+def d_deadtree(g):
+    n = g.n; cx = n/2
+    tr = (96, 74, 54); ts = (62, 46, 32)
+    g.rect(cx-n*0.05, n*0.4, cx+n*0.05, n*0.86, tr)
+    g.rect(cx-n*0.05, n*0.4, cx-n*0.02, n*0.86, ts)
+    g.line(cx, n*0.5, cx-n*0.24, n*0.32, tr, 2)     # голые ветви
+    g.line(cx, n*0.44, cx+n*0.22, n*0.28, tr, 2)
+    g.line(cx-n*0.14, n*0.4, cx-n*0.22, n*0.24, tr, 1)
+    g.line(cx+n*0.12, n*0.36, cx+n*0.18, n*0.2, tr, 1)
+
+def d_bones(g):
+    n = g.n; cx = n/2
+    b = (216, 212, 196); bs = (150, 146, 130)
+    g.ellipse(cx-n*0.12, n*0.64, n*0.13, n*0.12, b)     # череп
+    for s in (-1, 1):
+        g.ellipse(cx-n*0.12+s*n*0.05, n*0.63, n*0.03, n*0.035, (30,28,26))  # глазницы
+    g.line(cx+n*0.02, n*0.7, cx+n*0.28, n*0.6, b, 2)    # кость
+    g.ellipse(cx+n*0.28, n*0.6, n*0.04, n*0.04, b)
+    g.ellipse(cx+n*0.02, n*0.7, n*0.04, n*0.04, b)
+    g.line(cx-n*0.02, n*0.78, cx+n*0.2, n*0.76, bs, 1)  # ребро
+
+def d_crystal(g):    # белёсый — тинтуется по биому (лёд/пустота)
+    n = g.n; cx = n/2
+    c = (200, 224, 240); cs = (140, 176, 210); cl = (240, 250, 255)
+    g.tri([(cx, n*0.16), (cx-n*0.14, n*0.7), (cx+n*0.1, n*0.66)], c)
+    g.tri([(cx, n*0.16), (cx-n*0.14, n*0.7), (cx-n*0.03, n*0.66)], cs)
+    g.tri([(cx-n*0.2, n*0.4), (cx-n*0.3, n*0.72), (cx-n*0.08, n*0.7)], cs)   # осколок
+    g.tri([(cx+n*0.14, n*0.36), (cx+n*0.06, n*0.7), (cx+n*0.26, n*0.72)], c)
+    g.line(cx-n*0.02, n*0.24, cx-n*0.06, n*0.6, cl, 1)  # блик
+
+def d_column(g):     # разрушенная колонна (руины)
+    n = g.n; cx = n/2
+    st = (176, 172, 156); dk = (120, 116, 102)
+    g.rect(cx-n*0.16, n*0.3, cx+n*0.16, n*0.82, st)
+    g.rect(cx-n*0.16, n*0.3, cx-n*0.1, n*0.82, dk)      # тень
+    g.rect(cx-n*0.22, n*0.78, cx+n*0.22, n*0.88, st)    # база
+    g.rect(cx-n*0.2, n*0.28, cx+n*0.2, n*0.34, dk)      # скол верха
+    for fy in (0.44, 0.58, 0.7):                        # желоба
+        g.line(cx-n*0.08, n*fy, cx-n*0.08, n*fy+n*0.08, dk, 1)
+        g.line(cx+n*0.04, n*fy, cx+n*0.04, n*fy+n*0.08, dk, 1)
+
+def d_stump(g):
+    n = g.n; cx = n/2
+    tr = (120, 84, 50); top = (160, 120, 78)
+    g.rect(cx-n*0.16, n*0.5, cx+n*0.16, n*0.78, tr)
+    g.ellipse(cx, n*0.5, n*0.16, n*0.06, top)
+    g.ellipse(cx, n*0.5, n*0.08, n*0.03, tr)            # кольца среза
+
+def d_chest(g):
+    n = g.n; cx = n/2
+    wood = (150, 100, 56); wdk = (104, 68, 36); band = (150, 120, 60); gold = PAL['gold'][0]
+    g.rect(cx-n*0.26, n*0.5, cx+n*0.26, n*0.8, wood)    # корпус
+    g.rect(cx-n*0.26, n*0.5, cx-n*0.2, n*0.8, wdk)
+    g.rect(cx-n*0.28, n*0.36, cx+n*0.28, n*0.52, wood)  # крышка
+    g.ellipse(cx, n*0.36, n*0.28, n*0.1, wood)
+    g.rect(cx-n*0.28, n*0.5, cx+n*0.28, n*0.54, band)   # обод
+    for bx in (-0.18, 0.14):                            # вертик. полосы
+        g.rect(cx+n*bx, n*0.36, cx+n*bx+n*0.04, n*0.8, band)
+    g.rect(cx-n*0.04, n*0.5, cx+n*0.04, n*0.6, gold)    # замок
+    g.rect(cx-n*0.02, n*0.53, cx+n*0.02, n*0.57, (40,32,16))
+
+def d_chest_open(g):
+    n = g.n; cx = n/2
+    wood = (150, 100, 56); wdk = (104, 68, 36); band = (150, 120, 60); gold = PAL['gold'][0]
+    g.rect(cx-n*0.26, n*0.52, cx+n*0.26, n*0.82, wood)  # корпус
+    g.rect(cx-n*0.24, n*0.5, cx+n*0.24, n*0.56, (30,24,16))  # тёмное нутро
+    g.ellipse(cx, n*0.54, n*0.2, n*0.06, gold)          # золото внутри
+    for gx in (-0.1, 0.02, 0.12):
+        g.ellipse(cx+n*gx, n*0.53, n*0.04, n*0.04, (255, 232, 150))
+    g.rect(cx-n*0.28, n*0.2, cx+n*0.28, n*0.34, wood)   # открытая крышка (вверху)
+    g.ellipse(cx, n*0.2, n*0.28, n*0.09, wdk)
+    g.rect(cx-n*0.28, n*0.32, cx+n*0.28, n*0.36, band)
+
+DECOS = {
+    'deco_rock': d_rock, 'deco_bush': d_bush, 'deco_deadtree': d_deadtree,
+    'deco_bones': d_bones, 'deco_crystal': d_crystal, 'deco_column': d_column,
+    'deco_stump': d_stump, 'deco_chest': d_chest, 'deco_chest_open': d_chest_open,
+}
+
+
+# ---- НАДЕВАЕМАЯ БРОНЯ (оверлеи поверх героя; тот же холст 48px, что и f_hero) ----
+def wa_helm(g, p=None):
+    n = g.n; cx = n/2; s = PAL['steel']
+    g.ellipse(cx, n*0.28, n*0.19, n*0.15, s[0])         # купол поверх макушки
+    g.rect(cx-n*0.19, n*0.3, cx+n*0.19, n*0.35, s[1])   # кромка
+    g.rect(cx-1, n*0.14, cx+1, n*0.28, s[2])            # гребень
+    g.rect(cx-n*0.19, n*0.35, cx-n*0.13, n*0.44, s[0])  # нащёчник (левый; зеркалится)
+
+def wa_chest(g, p=None):
+    n = g.n; cx = n/2; s = PAL['steel']
+    g.tri([(cx-n*0.2, n*0.48), (cx+n*0.2, n*0.48), (cx, n*0.72)], s[0])  # нагрудник
+    g.rect(cx-n*0.16, n*0.46, cx+n*0.16, n*0.56, s[0])
+    g.rect(cx-n*0.16, n*0.46, cx+n*0.16, n*0.5, s[2])   # верхний блик
+    g.line(cx, n*0.5, cx, n*0.68, s[1], 1)              # центр. шов
+    g.ellipse(cx-n*0.09, n*0.55, n*0.035, n*0.05, s[2])
+
+def wa_shoulders(g, p=None):
+    n = g.n; cx = n/2; s = PAL['steel']
+    g.ellipse(cx-n*0.2, n*0.5, n*0.1, n*0.08, s[0])     # левый наплечник (зеркалится)
+    g.ellipse(cx-n*0.2, n*0.47, n*0.09, n*0.05, s[2])
+    g.tri([(cx-n*0.3, n*0.46), (cx-n*0.22, n*0.42), (cx-n*0.14, n*0.5)], s[1])  # шип
+
+WORN = {'worn_helm': wa_helm, 'worn_chest': wa_chest, 'worn_shoulders': wa_shoulders}
+
+
 def build_creature(name, fn, pal, kw, n, scale, mirror=True):
     random.seed(name)
     g = Grid(n)
@@ -856,8 +978,12 @@ def main():
         build_flat(key, fn, 30, 4)
     for key, fn in PROPS.items():
         build_flat(key, fn, 44, 4)
-    print('готово: %d существ, %d боссов, %d оружий, %d снарядов, %d предметов, %d пропов'
-          % (len(SPRITES), len(BOSSES), len(WEAPONS), len(PROJECTILES), len(ITEMS), len(PROPS)))
+    for key, fn in DECOS.items():
+        build_flat(key, fn, 40, 4)
+    for key, fn in WORN.items():
+        build_creature(key, fn, PAL['steel'], {}, 48, 4)
+    print('готово: %d существ, %d боссов, %d оружий, %d снарядов, %d предметов, %d пропов, %d декора, %d брони'
+          % (len(SPRITES), len(BOSSES), len(WEAPONS), len(PROJECTILES), len(ITEMS), len(PROPS), len(DECOS), len(WORN)))
 
 
 if __name__ == '__main__':

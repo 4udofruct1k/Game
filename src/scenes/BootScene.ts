@@ -30,6 +30,11 @@ export class BootScene extends Phaser.Scene {
     // пропы хаба
     for (const pr of ['house', 'forge', 'stall', 'fountain', 'portal', 'torch', 'barrel', 'statue', 'tree'])
       this.load.image('prop_' + pr, 'sprites/prop_' + pr + '.png');
+    // декор биомов + сундуки
+    for (const dc of ['rock', 'bush', 'deadtree', 'bones', 'crystal', 'column', 'stump', 'chest', 'chest_open'])
+      this.load.image('deco_' + dc, 'sprites/deco_' + dc + '.png');
+    // надеваемая броня (оверлеи поверх героя)
+    for (const wa of ['helm', 'chest', 'shoulders']) this.load.image('worn_' + wa, 'sprites/worn_' + wa + '.png');
     // не валимся, если какой-то спрайт не загрузился
     this.load.on('loaderror', () => {});
   }

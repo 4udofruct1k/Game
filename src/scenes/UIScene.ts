@@ -223,7 +223,19 @@ export class UIScene extends Phaser.Scene {
       if (p.out) continue;
       g.fillStyle(b.elite ? 0xff8a3a : 0xd64550, 0.95).fillCircle(p.x, p.y, (b.elite ? 3.0 : 2.1) * dm);
     }
-    // босс
+    // фиксированные точки боссов — всегда на карте (агр только при подходе)
+    const bpts = (hud.bossPoints as { x: number; y: number; active: boolean }[]) ?? [];
+    for (const bp of bpts) {
+      const p = toMap(bp.x, bp.y);
+      // ромб-череп: активный (в бою) ярче и с пульс-обводкой
+      g.fillStyle(bp.active ? 0xff5a2a : 0xc0402a, 1).fillCircle(p.x, p.y, (bp.active ? 4.8 : 3.6) * dm);
+      g.lineStyle(2, bp.active ? 0xffe080 : 0xe0a060, 0.95).strokeCircle(p.x, p.y, (bp.active ? 6.6 : 5.2) * dm);
+      // крестик-метка «босс»
+      g.lineStyle(1.4, 0xffffff, 0.9);
+      g.lineBetween(p.x - 2 * dm, p.y, p.x + 2 * dm, p.y);
+      g.lineBetween(p.x, p.y - 2 * dm, p.x, p.y + 2 * dm);
+    }
+    // активный босс (реальная позиция в бою)
     if (hud.hasBoss) {
       const p = toMap(hud.bossX as number, hud.bossY as number);
       g.fillStyle(0xff9a2a, 1).fillCircle(p.x, p.y, 4.4 * dm);
