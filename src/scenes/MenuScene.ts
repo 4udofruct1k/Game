@@ -131,8 +131,13 @@ export class MenuScene extends Phaser.Scene {
       }),
     );
 
+    // адаптивная сетка колонок под ширину экрана (иначе крайняя колонка обрезается)
+    const cols = tree.branches.length;
+    const marginL = 40;
+    const colW = (this.scale.width - marginL * 2) / cols;
+    const cardW = colW - 14;
     tree.branches.forEach((branch: SkillBranch, bi) => {
-      const x = 60 + bi * 300;
+      const x = marginL + bi * colW;
       this.add2(this.add.text(x, 116, branch.name, { fontFamily: 'system-ui', fontSize: '15px', color: '#9fd0ff' }));
       const invested = branch.nodes.filter((n) => allocated.has(n.id)).length;
       branch.nodes.forEach((node, ni) => {
@@ -141,7 +146,7 @@ export class MenuScene extends Phaser.Scene {
         const unlocked = invested >= tierThreshold(node.tier);
         const canBuy = !taken && unlocked && points > 0;
         const color = taken ? 0x2f6a3a : canBuy ? 0x394b8a : 0x24263a;
-        const bg = this.add.rectangle(x, y, 280, 60, color).setOrigin(0, 0).setStrokeStyle(1, node.key ? 0xf0a040 : 0x445);
+        const bg = this.add.rectangle(x, y, cardW, 60, color).setOrigin(0, 0).setStrokeStyle(1, node.key ? 0xf0a040 : 0x445);
         this.add2(bg);
         this.add2(
           this.add.text(x + 8, y + 6, `T${node.tier} ${node.name}${node.key ? ' ★' : ''}`, {
@@ -152,7 +157,7 @@ export class MenuScene extends Phaser.Scene {
           }),
         );
         this.add2(
-          this.add.text(x + 8, y + 26, node.desc, { fontFamily: 'system-ui', fontSize: '11px', color: '#b0b0c4', wordWrap: { width: 264 } }),
+          this.add.text(x + 8, y + 26, node.desc, { fontFamily: 'system-ui', fontSize: '11px', color: '#b0b0c4', wordWrap: { width: cardW - 16 } }),
         );
         if (canBuy) {
           bg.setInteractive({ useHandCursor: true }).on('pointerdown', () => {

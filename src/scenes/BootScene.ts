@@ -20,6 +20,7 @@ export class BootScene extends Phaser.Scene {
       this.load.image('hero_' + race + '_1', 'sprites/hero_' + race + '_1.png');
     }
     this.load.image('aura', 'sprites/aura.png');
+    this.load.image('slash', 'sprites/slash.png');
     for (const ring of Object.values(MOBS_BY_RING)) {
       for (const m of ring) this.load.image('mob_' + m.id, 'sprites/mob_' + m.id + '.png');
     }
