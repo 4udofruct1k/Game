@@ -104,7 +104,8 @@ export class HubScene extends Phaser.Scene {
         const price = armorPrice(run.bossesKilled.length + 1, rar);
         if (run.wallet.gold >= price) {
           run.wallet.gold -= price;
-          run.equipArmor(slot, { setId, slot, rarity: rar, weight, tier: run.bossesKilled.length + 1, enchant: eq?.enchant ?? 0 });
+          // новая броня начинается с чистого зачара — эффекты старой не переносятся
+          run.equipArmor(slot, { setId, slot, rarity: rar, weight, tier: run.bossesKilled.length + 1, enchant: 0 });
           this.flash(`${ARMOR_SLOT_NAMES[slot]}: ${RARITY_NAMES[rar]}`);
           this.refresh();
         } else this.flash('Мало золота');
@@ -137,7 +138,7 @@ export class HubScene extends Phaser.Scene {
     const wLabel = this.add.text(x, y + 30, '', { fontFamily: 'system-ui', fontSize: '12px', color: '#e0e0ee', wordWrap: { width: 250 } });
     const costLabel = this.add.text(x, y + 84, '', { fontFamily: 'system-ui', fontSize: '12px', color: '#c0c0d0' });
 
-    this.makeButton(x, y + 108, 220, 30, 'Зачаровать оружие (+тир)', 0x7a5a2a, () => {
+    this.makeButton(x, y + 108, 220, 30, 'Зачаровать оружие (эффект)', 0x7a5a2a, () => {
       if (run.build.weaponEnchant >= ENCHANT_MAX) {
         this.flash('Максимальный тир зачара');
         return;
@@ -152,7 +153,7 @@ export class HubScene extends Phaser.Scene {
       } else this.flash('Не хватает золота/осколков');
     });
 
-    this.makeButton(x, y + 146, 220, 30, `Зачаровать броню +тир (${REROLL_COST.gold}⦿ + пыль)`, 0x394b8a, () => {
+    this.makeButton(x, y + 146, 220, 30, `Зачаровать броню (эффект) (${REROLL_COST.gold}⦿ + пыль)`, 0x394b8a, () => {
       const equipped = Object.values(run.build.armor).filter(Boolean);
       if (equipped.length === 0) { this.flash('Сначала надень броню'); return; }
       if (run.wallet.gold >= REROLL_COST.gold && run.wallet.rerollDust >= REROLL_COST.dust) {

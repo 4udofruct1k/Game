@@ -1455,8 +1455,10 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  // «Уровень» брони = редкость + тир (зачар не учитывается — это отдельная
+  // механика эффектов, которая не переносится на новую броню).
   private armorScore(p: ArmorPiece): number {
-    return RARITY_ORDER.indexOf(p.rarity) * 10 + p.tier * 3 + p.enchant;
+    return RARITY_ORDER.indexOf(p.rarity) * 10 + p.tier;
   }
 
   private spawnArmorPickup(piece: ArmorPiece, x: number, y: number): void {
