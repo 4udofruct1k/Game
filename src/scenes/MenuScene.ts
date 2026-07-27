@@ -3,7 +3,10 @@ import { getCurrentRun, Run } from '../core/run';
 import { TALENT_TREE, CLASS_SKILL_TREES, tierThreshold, type SkillTree, type SkillBranch } from '../data/skills';
 import { CLASS_STATS, CLASS_ABILITIES } from '../data/classes';
 import { RARITY_NAMES } from '../data/rarity';
+import { RARITY_COLORS, ELEMENT_COLORS } from '../data/theme';
 import { ELEMENT_NAMES } from '../data/elements';
+import { ARMOR_SLOT_NAMES, type ArmorSlot } from '../data/armor';
+import { HEALS, type HealKind } from '../data/items';
 import { BASE_W, BASE_H } from '../data/balance';
 import { centerUICamera } from '../ui/layout';
 
@@ -131,10 +134,10 @@ export class MenuScene extends Phaser.Scene {
       }),
     );
 
-    // адаптивная сетка колонок под ширину экрана (иначе крайняя колонка обрезается)
+    // сетка колонок в пределах BASE_W (сцена центрируется камерой) — крайняя не режется
     const cols = tree.branches.length;
     const marginL = 40;
-    const colW = (this.scale.width - marginL * 2) / cols;
+    const colW = (BASE_W - marginL * 2) / cols;
     const cardW = colW - 14;
     tree.branches.forEach((branch: SkillBranch, bi) => {
       const x = marginL + bi * colW;
@@ -169,33 +172,56 @@ export class MenuScene extends Phaser.Scene {
     });
   }
 
+  // Плитка экипировки: рамка по редкости + иконка + подпись.
+  private gearTile(x: number, y: number, iconKey: string, tint: number, border: number, title: string, sub: string): void {
+    const g = this.add.graphics();
+    g.fillStyle(0x161a28, 1).fillRoundedRect(x, y, 104, 100, 8);
+    g.lineStyle(2, border, 0.95).strokeRoundedRect(x, y, 104, 100, 8);
+    this.add2(g);
+    if (this.textures.exists(iconKey)) this.add2(this.add.image(x + 52, y + 38, iconKey).setScale(0.5).setOrigin(0.5).setTint(tint));
+    this.add2(this.add.text(x + 52, y + 68, title, { fontFamily: 'system-ui', fontSize: '11px', color: '#e8e8f0', fontStyle: 'bold', align: 'center', wordWrap: { width: 98 } }).setOrigin(0.5, 0));
+    if (sub) this.add2(this.add.text(x + 52, y + 88, sub, { fontFamily: 'system-ui', fontSize: '10px', color: '#' + border.toString(16).padStart(6, '0') }).setOrigin(0.5, 0));
+  }
+
   private renderInventory(run: Run): void {
     const l = run.loadout;
-    const lines: string[] = [
-      'ЭКИПИРОВКА',
-      `Оружие: ${l.weapon.name} +${run.build.weaponEnchant}`,
-    ];
-    for (const slot of Object.keys(run.build.armor)) {
-      const p = run.build.armor[slot as keyof typeof run.build.armor]!;
-      lines.push(`${slot}: ${RARITY_NAMES[p.rarity]} (${p.weight})`);
-    }
-    lines.push('', 'РАСХОДНИКИ');
-    (Object.keys(run.heals) as (keyof typeof run.heals)[]).forEach((k) => {
-      if (run.heals[k] > 0) lines.push(`${k}: ×${run.heals[k]}`);
+    // ЭКИПИРОВКА — плитки оружия + брони
+    this.add2(this.add.text(60, 84, 'ЭКИПИРОВКА', { fontFamily: 'system-ui', fontSize: '16px', color: '#f0c040', fontStyle: 'bold' }));
+    const x0 = 60, y0 = 112, tw = 118;
+    const wTint = l.weapon.element !== 'none' ? (ELEMENT_COLORS[l.weapon.element] ?? 0xffffff) : 0xffffff;
+    this.gearTile(x0, y0, 'wpn_' + l.weapon.archetype, wTint, RARITY_COLORS[l.weapon.rarity] ?? 0x888888,
+      l.weapon.name, `+${run.build.weaponEnchant} зачар`);
+    (Object.keys(ARMOR_SLOT_NAMES) as ArmorSlot[]).forEach((slot, i) => {
+      const p = run.build.armor[slot];
+      const bx = x0 + (i + 1) * tw;
+      const border = p ? (RARITY_COLORS[p.rarity] ?? 0x888888) : 0x3a4054;
+      this.gearTile(bx, y0, 'armor_' + slot, p ? border : 0x556, border,
+        ARMOR_SLOT_NAMES[slot], p ? `${RARITY_NAMES[p.rarity]} +${p.enchant}` : 'пусто');
     });
-    lines.push('', 'МАТЕРИАЛЫ', `Осколки ${run.wallet.shards} · Пыль ${run.wallet.rerollDust} · Ядра ${run.wallet.bossCores}`);
-    this.add2(this.add.text(60, 90, lines.join('\n'), { fontFamily: 'system-ui', fontSize: '14px', color: '#dfe0ee', lineSpacing: 5 }));
 
-    // визуальная полоса экипировки: оружие + надетая броня
-    const strip: string[] = ['wpn_' + l.weapon.archetype];
-    for (const slot of Object.keys(run.build.armor)) strip.push('armor_' + slot);
-    this.add2(this.add.text(360, 90, 'ЭКИПИРОВКА', { fontFamily: 'system-ui', fontSize: '13px', color: '#9a9ab0' }));
-    strip.forEach((key, i) => {
-      if (!this.textures.exists(key)) return;
-      const cellX = 372 + (i % 4) * 58;
-      const cellY = 128 + Math.floor(i / 4) * 58;
-      this.add2(this.add.rectangle(cellX, cellY, 50, 50, 0x1a1e2c).setStrokeStyle(1, 0x3a4054));
-      this.add2(this.add.image(cellX, cellY, key).setScale(0.34).setOrigin(0.5));
+    // РАСХОДНИКИ — зелья с иконками
+    this.add2(this.add.text(60, 240, 'РАСХОДНИКИ', { fontFamily: 'system-ui', fontSize: '16px', color: '#f0c040', fontStyle: 'bold' }));
+    let cx = 60;
+    (Object.keys(run.heals) as HealKind[]).forEach((k) => {
+      const cnt = run.heals[k];
+      const g = this.add.graphics();
+      g.fillStyle(0x161a28, 1).fillRoundedRect(cx, 268, 150, 54, 8).lineStyle(1, 0x3a4054).strokeRoundedRect(cx, 268, 150, 54, 8);
+      this.add2(g);
+      if (this.textures.exists('item_' + k)) this.add2(this.add.image(cx + 28, 295, 'item_' + k).setScale(0.42).setOrigin(0.5));
+      this.add2(this.add.text(cx + 52, 278, HEALS[k].name, { fontFamily: 'system-ui', fontSize: '12px', color: cnt > 0 ? '#e8e8f0' : '#666' }));
+      this.add2(this.add.text(cx + 52, 298, `×${cnt}`, { fontFamily: 'system-ui', fontSize: '13px', color: '#8fe0a0', fontStyle: 'bold' }));
+      cx += 166;
+    });
+
+    // МАТЕРИАЛЫ
+    this.add2(this.add.text(60, 344, 'МАТЕРИАЛЫ', { fontFamily: 'system-ui', fontSize: '16px', color: '#f0c040', fontStyle: 'bold' }));
+    const mats = [`Осколки: ${run.wallet.shards}`, `Пыль: ${run.wallet.rerollDust}`, `Ядра боссов: ${run.wallet.bossCores}`, `Золото: ${Math.floor(run.wallet.gold)}`];
+    mats.forEach((m, i) => {
+      const mx = 60 + (i % 4) * 210;
+      const g = this.add.graphics();
+      g.fillStyle(0x161a28, 1).fillRoundedRect(mx, 372, 196, 40, 8).lineStyle(1, 0x3a4054).strokeRoundedRect(mx, 372, 196, 40, 8);
+      this.add2(g);
+      this.add2(this.add.text(mx + 12, 384, m, { fontFamily: 'system-ui', fontSize: '13px', color: '#cfd6ee' }));
     });
   }
 }

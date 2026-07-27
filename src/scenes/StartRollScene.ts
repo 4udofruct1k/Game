@@ -98,12 +98,13 @@ export class StartRollScene extends Phaser.Scene {
     }
     // линия выигрыша (центр)
     this.add.rectangle(fx, cy, fw, 2, 0xf0c040, 0.35).setOrigin(0, 0.5);
-    // рычаг справа
-    const lx = fx + fw + 30, ly = fy + 6;
-    this.add.circle(lx, ly, 10, 0x3a2a20);
-    const rod = this.add.rectangle(0, 0, 12, 92, 0x8a5a3a).setStrokeStyle(2, 0x5a3a2a).setOrigin(0.5, 0);
-    const knob = this.add.circle(0, 96, 16, 0xd83a3a).setStrokeStyle(2, 0xffe0a0, 0.7);
-    this.lever = this.add.container(lx, ly, [rod, knob]);
+    // рычаг — крепится к правому боку корпуса (кронштейн + ось), ручка сверху
+    const lx = fx + fw + 6, ly = cy + 40;
+    this.add.rectangle(lx - 8, ly - 18, 26, 36, 0x2a1c2e).setOrigin(0, 0).setStrokeStyle(2, 0xf0c040, 0.9); // кронштейн на корпусе
+    this.add.circle(lx + 5, ly, 6, 0x5a3a2a).setStrokeStyle(2, 0x2a1c2e); // ось
+    const rod = this.add.rectangle(0, 0, 11, 96, 0x8a5a3a).setStrokeStyle(2, 0x5a3a2a).setOrigin(0.5, 1);
+    const knob = this.add.circle(0, -96, 15, 0xd83a3a).setStrokeStyle(2, 0xffe0a0, 0.8);
+    this.lever = this.add.container(lx + 5, ly, [rod, knob]);
   }
 
   private lever!: Phaser.GameObjects.Container;
@@ -127,7 +128,16 @@ export class StartRollScene extends Phaser.Scene {
     const r = this.reels[i];
     const v = this.reelValue(l, i);
     const kc = 5;
-    r.items.forEach((t, k) => t.setText(k === kc ? v.text : '').setColor(v.color));
+    // центр = итог (ярко), соседи — случайные значения (тускло), чтобы было
+    // непонятно, что рядом на барабане
+    r.items.forEach((t, k) => {
+      if (k === kc) {
+        t.setText(v.text).setColor(v.color).setAlpha(1);
+      } else {
+        const rv = this.reelValue(rollStart(randomSeedText()), i);
+        t.setText(rv.text).setColor(rv.color).setAlpha(0.32);
+      }
+    });
     r.strip.y = r.cy - kc * r.itemH;
     this.clipReel(r);
   }
