@@ -14,7 +14,7 @@ import type { Rarity } from '../data/rarity';
 import { applyElement, vulnMult } from '../core/statusEngine';
 import { grantKillReward } from '../core/economy';
 import { REACTIONS, type Element } from '../data/elements';
-import { CLASS_STATS } from '../data/classes';
+import { CLASS_STATS, CLASS_ABILITIES, CLASS_ABILITY, type AbilityKind } from '../data/classes';
 import { touch, consumeTouch } from '../core/touchInput';
 import { RNG, hashSeed } from '../core/rng';
 
@@ -68,6 +68,8 @@ export class WorldScene extends Phaser.Scene {
   private eProj: Projectile[] = [];
   private boss: Boss | null = null;
   private bossObj: Boss | null = null;
+  // временные турели/миньоны от навыков
+  private summons: { x: number; y: number; spr: Phaser.GameObjects.Image; until: number; cd: number; coef: number }[] = [];
   // фиксированные точки боссов (по одной на кольцо), всегда на карте
   private bossAnchors: { ring: number; id: string; x: number; y: number }[] = [];
   // декор биомов (чанки вокруг игрока) + сундуки
@@ -336,6 +338,7 @@ export class WorldScene extends Phaser.Scene {
     this.updatePickups();
     this.updateDecorations(dt);
     this.updateChests();
+    this.updateSummons(dtMs, time);
 
     // спавн мобов + появление босса
     this.spawnLogic(dt);
@@ -596,26 +599,329 @@ export class WorldScene extends Phaser.Scene {
     const s = this.run.stats();
     const coef = CLASS_STATS[this.run.loadout.classId].skillCoef;
     this.skillCd = 5000 * (1 - s.cdrPct);
-    const input = this.baseHitInput(coef);
-    const radius = 240;
-    this.aoeBurst(this.player.x, this.player.y, radius, input, this.skillElement(), 0x88bbff);
-    this.flashBanner(CLASS_STATS[this.run.loadout.classId].name + ': ' + (this.run.loadout.abilitySkill), 900);
+    const kind = CLASS_ABILITY[this.run.loadout.classId]?.skill ?? 'nova';
+    this.performAbility(kind, coef, false);
+    this.flashBanner(this.run.loadout.abilitySkill, 900);
   }
 
   private castUlt(): void {
     if (this.ultCharge < ULT_CHARGE_FULL || this.inHub()) return;
     this.ultCharge = 0;
     const coef = CLASS_STATS[this.run.loadout.classId].ultCoef;
+    const kind = CLASS_ABILITY[this.run.loadout.classId]?.ult ?? 'nuke';
+    this.performAbility(kind, coef, true);
+    this.cameras.main.shake(240, 0.011);
+    this.flashBanner('★ ' + CLASS_ABILITIES[this.run.loadout.classId].ult, 1300);
+  }
+
+  // Диспатч уникального действия навыка/ульты по виду класса.
+  private performAbility(kind: AbilityKind, coef: number, ult: boolean): void {
     const input = this.baseHitInput(coef);
-    // очистка экрана — большой AoE вокруг игрока
-    this.aoeBurst(this.player.x, this.player.y, 500, input, this.skillElement(), 0xffaa33);
-    this.cameras.main.shake(220, 0.01);
-    this.flashBanner('УЛЬТА!', 1200);
+    const el = this.skillElement();
+    const col = ELEMENT_COLORS[el] ?? 0x9fd0ff;
+    const px = this.player.x, py = this.player.y;
+    switch (kind) {
+      case 'whirlwind': {
+        // вихрь клинков — серия росчерков + мультихит вокруг
+        const r = ult ? 340 : 230;
+        const hits = ult ? 5 : 3;
+        for (let i = 0; i < hits; i++) {
+          this.time.delayedCall(i * 85, () => {
+            if (!this.player.active) return;
+            this.spinSlash(this.player.x, this.player.y, r, col, i);
+            this.aoeBurst(this.player.x, this.player.y, r, input, el, 0xffd066);
+          });
+        }
+        break;
+      }
+      case 'nova': {
+        const r = ult ? 460 : 290;
+        this.novaRing(px, py, r, col);
+        this.aoeBurst(px, py, r, input, el, col);
+        break;
+      }
+      case 'nuke': {
+        // экранный удар: расширяющаяся волна + мощный AoE
+        const r = ult ? 620 : 420;
+        this.novaRing(px, py, r, 0xffe08a);
+        this.time.delayedCall(60, () => this.novaRing(px, py, r * 0.7, col));
+        this.aoeBurst(px, py, r, input, el, 0xffcf6a);
+        if (this.run.loadout.classId === 'bloodmage') this.run.currentHP = Math.min(this.run.stats().maxHP, this.run.currentHP + this.run.stats().maxHP * 0.2);
+        break;
+      }
+      case 'rain': {
+        // ливень ударов по площади (метеоры/стрелы)
+        const n = ult ? 12 : 6;
+        const R = ult ? 460 : 300;
+        for (let i = 0; i < n; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const d = Math.sqrt(Math.random()) * R;
+          const x = px + Math.cos(a) * d, y = py + Math.sin(a) * d;
+          this.time.delayedCall(100 + i * 70, () => {
+            this.fxCircle(x, y, 78, 0xff7a30, 0.4);
+            this.aoeBurst(x, y, 86, input, el, 0xff9a40);
+          });
+        }
+        break;
+      }
+      case 'meteor': {
+        // одиночный тяжёлый снаряд-взрыв в цель/по направлению
+        const t = this.nearestEnemyPos() ?? { x: px + Math.cos(this.player.facing.angle()) * 300, y: py + Math.sin(this.player.facing.angle()) * 300 };
+        this.fxCircle(t.x, t.y, 30, 0xff5020, 0.3);
+        this.time.delayedCall(ult ? 260 : 200, () => {
+          const r = ult ? 260 : 170;
+          this.novaRing(t.x, t.y, r, 0xff7030);
+          this.aoeBurst(t.x, t.y, r, input, el, 0xff7030);
+          this.cameras.main.shake(140, 0.006);
+        });
+        break;
+      }
+      case 'volley': {
+        const n = ult ? 9 : 5;
+        const spreadTotal = ult ? 1.1 : 0.6;
+        const facing = this.player.facing.clone().normalize();
+        this.player.playAttack('ranged');
+        for (let i = 0; i < n; i++) {
+          const off = (i - (n - 1) / 2) * (spreadTotal / Math.max(1, n - 1));
+          const dir = facing.clone().rotate(off);
+          this.firePlayerProjectile(dir, input, el, false, 3, 12, 1.15, 'proj_arrow');
+        }
+        break;
+      }
+      case 'cone': {
+        // фронтальный конус (дыхание/волна)
+        const range = ult ? 440 : 300;
+        const arc = ult ? 1.5 : 1.0;
+        this.coneStrike(range, arc, input, el, col);
+        break;
+      }
+      case 'beam': {
+        // луч по направлению
+        const range = ult ? 560 : 420;
+        this.beamStrike(range, input, el, col);
+        break;
+      }
+      case 'chain': {
+        this.chainLightning(ult ? 8 : 5, input, el);
+        break;
+      }
+      case 'dash': {
+        this.blinkStrike(input, el, ult ? 3 : 1);
+        break;
+      }
+      case 'heal': {
+        const st = this.run.stats();
+        this.run.currentHP = Math.min(st.maxHP, this.run.currentHP + st.maxHP * (ult ? 0.5 : 0.28));
+        this.novaRing(px, py, ult ? 360 : 240, 0xffe89a);
+        this.spawnPickupFx(px, py, 0x9fe0a0);
+        this.aoeBurst(px, py, ult ? 360 : 240, input, 'radiance', 0xffe89a);
+        if (ult) this.player.grantShield(2600);
+        break;
+      }
+      case 'shield': {
+        this.player.grantShield(ult ? 4000 : 2200);
+        this.novaRing(px, py, 260, 0xffe08a);
+        this.aoeBurst(px, py, 260, input, 'radiance', 0xffe08a);
+        break;
+      }
+      case 'poison': {
+        // ядовитое облако — залипающая зона урона
+        const r = ult ? 300 : 200;
+        this.playerCloud(px, py, r, ult ? 6 : 4, input);
+        break;
+      }
+      case 'timestop': {
+        // временной разрыв: стан+урон по округе
+        const r = ult ? 440 : 300;
+        this.novaRing(px, py, r, 0x9fd0ff);
+        this.time.delayedCall(80, () => this.novaRing(px, py, r * 0.6, 0xd0e8ff));
+        for (const e of this.enemies) if (e.active && Phaser.Math.Distance.Between(px, py, e.x, e.y) <= r) e.freeze(ult ? 2500 : 1400);
+        this.aoeBurst(px, py, r, input, el, 0xbfe0ff);
+        break;
+      }
+      case 'summon': {
+        const n = ult ? 4 : 2;
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 2;
+          this.spawnTurret(px + Math.cos(a) * 70, py + Math.sin(a) * 70, coef, ult ? 8000 : 5500);
+        }
+        break;
+      }
+    }
   }
 
   private skillElement(): Element {
     const w = this.run.loadout.weapon.element;
     return w !== 'none' ? w : this.run.loadout.element;
+  }
+
+  private nearestEnemyPos(): { x: number; y: number } | null {
+    let best: { x: number; y: number } | null = null;
+    let bd = 900;
+    for (const e of this.enemies) {
+      if (!e.active) continue;
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
+      if (d < bd) { bd = d; best = { x: e.x, y: e.y }; }
+    }
+    if (this.boss && this.boss.active) {
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.boss.x, this.boss.y);
+      if (d < bd) best = { x: this.boss.x, y: this.boss.y };
+    }
+    return best;
+  }
+
+  // Вращающийся росчерк для вихря.
+  private spinSlash(x: number, y: number, r: number, color: number, i: number): void {
+    const s = this.slashFx;
+    this.tweens.killTweensOf(s);
+    s.setVisible(true).setPosition(x, y).setTint(color).setAlpha(0.9).setScale((r / 127) * 0.9).setRotation(i * 1.4);
+    this.tweens.add({ targets: s, rotation: i * 1.4 + Math.PI * 1.4, alpha: 0, duration: 260, ease: 'Quad.easeOut', onComplete: () => s.setVisible(false) });
+  }
+
+  // Расширяющееся кольцо (нова).
+  private novaRing(x: number, y: number, r: number, color: number): void {
+    const ring = this.add.circle(x, y, 10, color, 0).setStrokeStyle(6, color, 0.85).setDepth(8);
+    this.tweens.add({ targets: ring, radius: r, alpha: 0, duration: 320, ease: 'Quad.easeOut', onUpdate: () => ring.setStrokeStyle(6, color, ring.alpha), onComplete: () => ring.destroy() });
+    this.fxCircle(x, y, r * 0.7, color, 0.22);
+  }
+
+  // Фронтальный конус (дыхание/волна).
+  private coneStrike(range: number, arc: number, input: HitInput, el: Element, color: number): void {
+    const angle = this.player.facing.angle();
+    const g = this.add.graphics().setDepth(8);
+    g.fillStyle(color, 0.35);
+    g.slice(this.player.x, this.player.y, range, angle - arc / 2, angle + arc / 2, false);
+    g.fillPath();
+    this.tweens.add({ targets: g, alpha: 0, duration: 260, onComplete: () => g.destroy() });
+    for (const e of this.enemies) {
+      if (!e.active) continue;
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
+      if (d > range) continue;
+      const a = Phaser.Math.Angle.Between(this.player.x, this.player.y, e.x, e.y);
+      if (Math.abs(Phaser.Math.Angle.Wrap(a - angle)) <= arc / 2) this.dealToEnemy(e, input, el);
+    }
+    if (this.boss && this.boss.active) {
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, this.boss.x, this.boss.y);
+      const a = Phaser.Math.Angle.Between(this.player.x, this.player.y, this.boss.x, this.boss.y);
+      if (d <= range && Math.abs(Phaser.Math.Angle.Wrap(a - angle)) <= arc / 2) this.dealToBoss(input, el);
+    }
+  }
+
+  // Луч по направлению.
+  private beamStrike(range: number, input: HitInput, el: Element, color: number): void {
+    const angle = this.player.facing.angle();
+    const ex = this.player.x + Math.cos(angle) * range;
+    const ey = this.player.y + Math.sin(angle) * range;
+    const g = this.add.graphics().setDepth(8);
+    g.lineStyle(14, color, 0.5).lineBetween(this.player.x, this.player.y, ex, ey);
+    g.lineStyle(5, 0xffffff, 0.9).lineBetween(this.player.x, this.player.y, ex, ey);
+    this.tweens.add({ targets: g, alpha: 0, duration: 220, onComplete: () => g.destroy() });
+    const half = 34;
+    for (const e of this.enemies) {
+      if (!e.active) continue;
+      if (this.distToSegment(e.x, e.y, this.player.x, this.player.y, ex, ey) <= half + e.displayWidth / 3) this.dealToEnemy(e, input, el);
+    }
+    if (this.boss && this.boss.active && this.distToSegment(this.boss.x, this.boss.y, this.player.x, this.player.y, ex, ey) <= half + this.boss.displayWidth / 3) this.dealToBoss(input, el);
+  }
+
+  private distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+    const dx = bx - ax, dy = by - ay;
+    const l2 = dx * dx + dy * dy || 1;
+    let t = ((px - ax) * dx + (py - ay) * dy) / l2;
+    t = Phaser.Math.Clamp(t, 0, 1);
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+  }
+
+  // Цепная молния между ближайшими врагами.
+  private chainLightning(jumps: number, input: HitInput, el: Element): void {
+    const targets: { x: number; y: number; e?: Enemy }[] = [];
+    const used = new Set<Enemy>();
+    let from = { x: this.player.x, y: this.player.y };
+    for (let j = 0; j < jumps; j++) {
+      let best: Enemy | null = null; let bd = 380;
+      for (const e of this.enemies) {
+        if (!e.active || used.has(e)) continue;
+        const d = Phaser.Math.Distance.Between(from.x, from.y, e.x, e.y);
+        if (d < bd) { bd = d; best = e; }
+      }
+      if (!best) break;
+      used.add(best);
+      targets.push({ x: best.x, y: best.y, e: best });
+      from = { x: best.x, y: best.y };
+    }
+    const g = this.add.graphics().setDepth(8).lineStyle(3, 0x9fe0ff, 0.9);
+    let prev = { x: this.player.x, y: this.player.y };
+    for (const t of targets) { g.lineBetween(prev.x, prev.y, t.x, t.y); prev = t; }
+    this.tweens.add({ targets: g, alpha: 0, duration: 240, onComplete: () => g.destroy() });
+    for (const t of targets) if (t.e && t.e.active) this.dealToEnemy(t.e, input, el);
+    // добить босса, если рядом
+    if (this.boss && this.boss.active && Phaser.Math.Distance.Between(this.player.x, this.player.y, this.boss.x, this.boss.y) < 420) this.dealToBoss(input, el);
+  }
+
+  // Рывок-удар к ближайшему врагу (иногда несколько прыжков).
+  private blinkStrike(input: HitInput, el: Element, jumps: number): void {
+    const doJump = (n: number) => {
+      const t = this.nearestEnemyPos();
+      if (!t) return;
+      const ang = Phaser.Math.Angle.Between(this.player.x, this.player.y, t.x, t.y);
+      const dist = Math.min(Phaser.Math.Distance.Between(this.player.x, this.player.y, t.x, t.y), 320);
+      this.player.setPosition(this.player.x + Math.cos(ang) * dist, this.player.y + Math.sin(ang) * dist);
+      this.player.iframeT = Math.max(this.player.iframeT, 300);
+      this.player.playAttack('melee');
+      this.spinSlash(this.player.x, this.player.y, 150, 0xffffff, n);
+      this.aoeBurst(this.player.x, this.player.y, 140, input, el, 0xffffff);
+      if (n + 1 < jumps) this.time.delayedCall(120, () => doJump(n + 1));
+    };
+    doJump(0);
+  }
+
+  // Ядовитое облако — залипающая зона (переиспользует систему телеграфов как DoT).
+  private playerCloud(x: number, y: number, r: number, ticks: number, input: HitInput): void {
+    this.fxCircle(x, y, r, 0x8fd24a, 0.28);
+    for (let i = 0; i < ticks; i++) {
+      this.time.delayedCall(i * 400, () => {
+        this.fxCircle(x, y, r, 0x8fd24a, 0.14);
+        for (const e of this.enemies) if (e.active && Phaser.Math.Distance.Between(x, y, e.x, e.y) <= r) this.dealToEnemy(e, input, 'poison');
+        if (this.boss && this.boss.active && Phaser.Math.Distance.Between(x, y, this.boss.x, this.boss.y) <= r) this.dealToBoss(input, 'poison');
+      });
+    }
+  }
+
+  // Временная турель/миньон: стреляет по ближайшему врагу.
+  private spawnTurret(x: number, y: number, coef: number, dur: number): void {
+    const spr = this.add.image(x, y, this.textures.exists('proj_orb') ? 'proj_orb' : 'circle').setDepth(7).setScale(1.6).setTint(0x9fe0ff);
+    this.tweens.add({ targets: spr, scale: 1.9, yoyo: true, repeat: -1, duration: 500 });
+    this.summons.push({ x, y, spr, until: this.lastTime + dur, cd: 0, coef });
+  }
+
+  // Тик турелей/миньонов: стреляют по ближайшему врагу, гаснут по таймеру.
+  private updateSummons(dtMs: number, time: number): void {
+    for (let i = this.summons.length - 1; i >= 0; i--) {
+      const t = this.summons[i];
+      if (time >= t.until) {
+        this.tweens.killTweensOf(t.spr);
+        t.spr.destroy();
+        this.summons.splice(i, 1);
+        continue;
+      }
+      t.cd -= dtMs;
+      if (t.cd > 0) continue;
+      // ближайший враг в радиусе
+      let best: Enemy | null = null; let bd = 520;
+      for (const e of this.enemies) {
+        if (!e.active) continue;
+        const d = Phaser.Math.Distance.Between(t.x, t.y, e.x, e.y);
+        if (d < bd) { bd = d; best = e; }
+      }
+      const target = best ?? (this.boss && this.boss.active && Phaser.Math.Distance.Between(t.x, t.y, this.boss.x, this.boss.y) < 520 ? this.boss : null);
+      if (!target) continue;
+      t.cd = 620;
+      const ang = Phaser.Math.Angle.Between(t.x, t.y, target.x, target.y);
+      const proj = this.getProjectile(this.pProj, this.pProjGroup);
+      const payload = { owner: 'player' as const, raw: 0, element: this.skillElement(), isTrue: false, crit: false, pierce: 1 };
+      (proj as Projectile & { hitInput?: HitInput }).hitInput = this.baseHitInput(t.coef * 0.4);
+      proj.fire(t.x, t.y, Math.cos(ang) * 620, Math.sin(ang) * 620, payload, 10, 'proj_orb');
+    }
   }
 
   private aoeBurst(x: number, y: number, radius: number, input: HitInput, el: Element, color: number): void {

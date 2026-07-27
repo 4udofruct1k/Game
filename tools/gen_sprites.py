@@ -999,7 +999,8 @@ def f_race(g, cfg, frame):
     # --- ноги (героическая стойка + шаг) ---
     legw = n*0.05
     def leg(x, fwd):
-        top = n*0.6; bot = n*0.9 - (n*0.04 if fwd else 0); off = (n*0.03 if fwd else -n*0.01)
+        # выраженный шаг: передняя нога поднята и вынесена вперёд, задняя отведена назад
+        top = n*0.6; bot = n*0.9 - (n*0.08 if fwd else 0); off = (n*0.06 if fwd else -n*0.05)
         g.rect(x-legw+off, top, x+legw+off, bot, bsh)
         g.rect(x-legw+off, bot-n*0.055, x+legw+off+n*0.02, bot, (46,38,32))   # сапог
         g.rect(x-legw+off, bot-n*0.055, x+legw+off, bot-n*0.03, (78,64,52))   # блик сапога

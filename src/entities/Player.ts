@@ -38,7 +38,6 @@ export class Player extends Phaser.Physics.Arcade.Image {
   private walkFrames: [string, string] = ['hero', 'hero'];
   private walkFrame = 0;
   private walkT = 0;
-  private leanRot = 0;
   private auraSpr!: Phaser.GameObjects.Image;
 
   constructor(scene: Phaser.Scene, x: number, y: number, run: Run) {
@@ -135,7 +134,7 @@ export class Player extends Phaser.Physics.Arcade.Image {
     // броня повторяет позицию/масштаб/зеркало/наклон героя (рисовалась тем же холстом)
     for (const spr of [this.chestSpr, this.shouldersSpr, this.helmSpr]) {
       if (!spr.visible) continue;
-      spr.setPosition(this.x, this.y).setScale(this.scaleX, this.scaleY).setFlipX(flip).setRotation(this.rotation).setAlpha(a);
+      spr.setPosition(this.x, this.y).setScale(this.scaleX, this.scaleY).setFlipX(flip).setAlpha(a);
     }
     // оружие сбоку от героя, с наклоном; анимация атаки
     const side = flip ? -1 : 1;
@@ -165,6 +164,11 @@ export class Player extends Phaser.Physics.Arcade.Image {
 
   get invulnerable(): boolean {
     return this.iframeT > 0;
+  }
+
+  // Щит/неуязвимость на время (для навыков паладина/жреца).
+  grantShield(ms: number): void {
+    this.iframeT = Math.max(this.iframeT, ms);
   }
 
   refreshFromStats(): void {
@@ -222,27 +226,23 @@ export class Player extends Phaser.Physics.Arcade.Image {
     this.syncOverlays();
   }
 
-  // Смена кадров ходьбы + наклон корпуса в сторону движения (зеркалится флипом).
+  // Бег — чистой сменой кадров (как в Soul Knight), без искажения модельки.
   private animateWalk(dtMs: number): void {
     const body = this.body as Phaser.Physics.Arcade.Body;
     const spd = Math.hypot(body.velocity.x, body.velocity.y);
     if (spd > 24) {
       this.walkT += dtMs;
-      if (this.walkT > 130) {
+      if (this.walkT > 110) {
         this.walkT = 0;
         this.walkFrame ^= 1;
         this.setTexture(this.walkFrames[this.walkFrame]);
       }
-      const lean = Phaser.Math.Clamp(body.velocity.x / (this.baseSpeed || 1), -1, 1) * 0.12;
-      this.leanRot += (lean - this.leanRot) * 0.25;
-    } else {
-      if (this.walkFrame !== 0) {
-        this.walkFrame = 0;
-        this.setTexture(this.walkFrames[0]);
-      }
-      this.leanRot *= 0.8;
+    } else if (this.walkFrame !== 0) {
+      this.walkFrame = 0;
+      this.walkT = 0;
+      this.setTexture(this.walkFrames[0]);
     }
-    this.setRotation(this.leanRot);
+    // никакого наклона/скоса модели — только кадры
   }
 
   // Урон по игроку с учётом уворота/неуязвимости. Возвращает фактический урон.
