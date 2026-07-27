@@ -38,27 +38,39 @@ export class UIScene extends Phaser.Scene {
   create(): void {
     const w = this.scale.width;
 
+    // Панель-подложка статов (крупнее, скруглённая, в стиле игры)
+    const panel = this.add.graphics().setScrollFactor(0);
+    panel.fillStyle(0x0e1220, 0.72).fillRoundedRect(12, 12, 360, 108, 12);
+    panel.lineStyle(2, 0x3a4a6a, 0.8).strokeRoundedRect(12, 12, 360, 108, 12);
+
     // HP
-    this.add.rectangle(16, 16, 260, 20, COLORS.hpBg).setOrigin(0, 0);
-    this.hpBar = this.add.rectangle(16, 16, 260, 20, COLORS.hp).setOrigin(0, 0);
-    this.hpText = this.add.text(20, 17, '', { fontFamily: 'system-ui', fontSize: '13px', color: '#fff' });
+    this.add.text(24, 20, '❤', { fontFamily: 'system-ui', fontSize: '20px', color: '#ff5a6a' });
+    this.add.rectangle(52, 22, 308, 26, COLORS.hpBg).setOrigin(0, 0).setStrokeStyle(1, 0x000000, 0.4);
+    this.hpBar = this.add.rectangle(52, 22, 308, 26, COLORS.hp).setOrigin(0, 0);
+    this.hpText = this.add.text(206, 25, '', { fontFamily: 'system-ui', fontSize: '15px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5, 0);
 
-    // XP
-    this.add.rectangle(16, 40, 260, 8, 0x22283a).setOrigin(0, 0);
-    this.xpBar = this.add.rectangle(16, 40, 0, 8, COLORS.xp).setOrigin(0, 0);
-    this.lvlText = this.add.text(16, 52, '', { fontFamily: 'system-ui', fontSize: '12px', color: '#bcd6f0' });
+    // XP + уровень
+    this.add.rectangle(52, 54, 308, 12, 0x22283a).setOrigin(0, 0);
+    this.xpBar = this.add.rectangle(52, 54, 0, 12, COLORS.xp).setOrigin(0, 0);
+    this.lvlText = this.add.text(56, 55, '', { fontFamily: 'system-ui', fontSize: '11px', color: '#dce8ff', fontStyle: 'bold' });
 
-    // Энергия
-    this.add.rectangle(16, 70, 200, 6, 0x1a2a2a).setOrigin(0, 0);
-    this.energyBar = this.add.rectangle(16, 70, 200, 6, COLORS.energy).setOrigin(0, 0);
+    // Энергия ⚡
+    this.add.text(24, 72, '⚡', { fontFamily: 'system-ui', fontSize: '15px', color: '#6fe0d0' });
+    this.add.rectangle(52, 76, 150, 10, 0x1a2a2a).setOrigin(0, 0);
+    this.energyBar = this.add.rectangle(52, 76, 150, 10, COLORS.energy).setOrigin(0, 0);
 
-    // Золото
-    this.goldText = this.add.text(w - 16, 16, '', { fontFamily: 'system-ui', fontSize: '16px', color: '#f0c040' }).setOrigin(1, 0);
+    // Ульта ★
+    this.add.text(212, 72, '★', { fontFamily: 'system-ui', fontSize: '15px', color: '#c9a0e0' });
+    this.add.rectangle(232, 76, 128, 10, 0x2a1a3a).setOrigin(0, 0);
+    this.ultBar = this.add.rectangle(232, 76, 0, 10, COLORS.ult).setOrigin(0, 0);
+    this.ultText = this.add.text(52, 92, '', { fontFamily: 'system-ui', fontSize: '11px', color: '#c9a0e0' });
 
-    // Ульта
-    this.add.rectangle(16, 84, 200, 8, 0x2a1a3a).setOrigin(0, 0);
-    this.ultBar = this.add.rectangle(16, 84, 0, 8, COLORS.ult).setOrigin(0, 0);
-    this.ultText = this.add.text(220, 82, '', { fontFamily: 'system-ui', fontSize: '11px', color: '#c9a0e0' });
+    // Золото (панель справа сверху)
+    const gp = this.add.graphics().setScrollFactor(0);
+    gp.fillStyle(0x0e1220, 0.72).fillRoundedRect(w - 150, 12, 138, 34, 10);
+    gp.lineStyle(2, 0x6a5a2a, 0.8).strokeRoundedRect(w - 150, 12, 138, 34, 10);
+    this.add.text(w - 138, 18, '⦿', { fontFamily: 'system-ui', fontSize: '20px', color: '#f0c040' });
+    this.goldText = this.add.text(w - 20, 20, '', { fontFamily: 'system-ui', fontSize: '18px', color: '#f7d868', fontStyle: 'bold' }).setOrigin(1, 0);
 
     // низ: способности/хилка/очки
     const y = this.scale.height - 26;
@@ -76,12 +88,12 @@ export class UIScene extends Phaser.Scene {
       .setOrigin(0.5, 1);
 
     // баннер
-    this.bannerText = this.add.text(w / 2, 110, '', { fontFamily: 'system-ui', fontSize: '18px', color: '#ffe08a', fontStyle: 'bold' }).setOrigin(0.5);
+    this.bannerText = this.add.text(w / 2, 116, '', { fontFamily: 'system-ui', fontSize: '24px', color: '#ffe08a', fontStyle: 'bold' }).setOrigin(0.5).setShadow(2, 2, '#000', 4);
 
-    // босс-бар
-    this.bossName = this.add.text(w / 2, 30, '', { fontFamily: 'system-ui', fontSize: '14px', color: '#ff9a9a' }).setOrigin(0.5);
-    this.bossBarBg = this.add.rectangle(w / 2, 50, 420, 12, 0x3a1518).setOrigin(0.5).setVisible(false);
-    this.bossBar = this.add.rectangle(w / 2 - 210, 50, 420, 12, 0xd64550).setOrigin(0, 0.5).setVisible(false);
+    // босс-бар (крупнее, с рамкой)
+    this.bossName = this.add.text(w / 2, 26, '', { fontFamily: 'system-ui', fontSize: '17px', color: '#ff9a9a', fontStyle: 'bold' }).setOrigin(0.5);
+    this.bossBarBg = this.add.rectangle(w / 2, 52, 480, 18, 0x2a0e12).setOrigin(0.5).setStrokeStyle(2, 0xd64550, 0.9).setVisible(false);
+    this.bossBar = this.add.rectangle(w / 2 - 238, 52, 476, 14, 0xe0503e).setOrigin(0, 0.5).setVisible(false);
 
     // миникарта (рисуется в update) + разворот по тапу/клавише M
     this.minimap = this.add.graphics().setScrollFactor(0).setDepth(60);
@@ -118,18 +130,18 @@ export class UIScene extends Phaser.Scene {
     if (!hud) return;
     const hp = hud.hp as number;
     const maxHp = hud.maxHp as number;
-    this.hpBar.width = 260 * Phaser.Math.Clamp(hp / maxHp, 0, 1);
+    this.hpBar.width = 308 * Phaser.Math.Clamp(hp / maxHp, 0, 1);
     this.hpText.setText(`${Math.ceil(hp)} / ${Math.ceil(maxHp)}`);
 
-    this.xpBar.width = 260 * Phaser.Math.Clamp((hud.xp as number) / Math.max(1, hud.xpNext as number), 0, 1);
+    this.xpBar.width = 308 * Phaser.Math.Clamp((hud.xp as number) / Math.max(1, hud.xpNext as number), 0, 1);
     this.lvlText.setText(`Ур. ${hud.level} / ${hud.levelCap}`);
 
-    this.energyBar.width = 200 * Phaser.Math.Clamp((hud.energy as number) / (hud.energyMax as number), 0, 1);
+    this.energyBar.width = 150 * Phaser.Math.Clamp((hud.energy as number) / (hud.energyMax as number), 0, 1);
 
-    this.goldText.setText(`⦿ ${Math.floor(hud.gold as number)}`);
+    this.goldText.setText(`${Math.floor(hud.gold as number)}`);
 
     const ultP = Phaser.Math.Clamp((hud.ultCharge as number) / (hud.ultFull as number), 0, 1);
-    this.ultBar.width = 200 * ultP;
+    this.ultBar.width = 128 * ultP;
     this.ultText.setText(ultP >= 1 ? 'УЛЬТА готова (K)' : `Ульта ${Math.floor(ultP * 100)}%`);
 
     this.dashText.setText(`⟿ ${hud.dashCharges}/${hud.maxDash}`);
@@ -152,7 +164,7 @@ export class UIScene extends Phaser.Scene {
       this.bossName.setText(bn);
       this.bossBarBg.setVisible(true);
       this.bossBar.setVisible(true);
-      this.bossBar.width = 420 * Phaser.Math.Clamp((hud.bossHp as number) / (hud.bossMaxHp as number), 0, 1);
+      this.bossBar.width = 476 * Phaser.Math.Clamp((hud.bossHp as number) / (hud.bossMaxHp as number), 0, 1);
     } else {
       this.bossName.setText('');
       this.bossBarBg.setVisible(false);

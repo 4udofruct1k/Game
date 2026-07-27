@@ -96,6 +96,45 @@ export const CLASS_ABILITIES: Record<string, ClassAbilities> = {
   architect: { passive: 'размещает террейн/постройки', skill: 'Возвести стену/ловушку', ult: 'Крепость (+турели)', branches: ['Стройка', 'Ловушки', 'Осада'] },
 };
 
+// Вид действия навыка/ульты — у каждого класса свой (движок диспатчит по виду).
+export type AbilityKind =
+  | 'whirlwind' | 'nova' | 'rain' | 'meteor' | 'volley' | 'cone'
+  | 'beam' | 'chain' | 'dash' | 'heal' | 'shield' | 'poison'
+  | 'summon' | 'timestop' | 'nuke';
+
+export const CLASS_ABILITY: Record<string, { skill: AbilityKind; ult: AbilityKind }> = {
+  warrior: { skill: 'whirlwind', ult: 'whirlwind' },
+  ranger: { skill: 'volley', ult: 'rain' },
+  mage: { skill: 'meteor', ult: 'rain' },
+  rogue: { skill: 'dash', ult: 'dash' },
+  priest: { skill: 'heal', ult: 'heal' },
+  barbarian: { skill: 'whirlwind', ult: 'whirlwind' },
+  paladin: { skill: 'heal', ult: 'shield' },
+  pyromancer: { skill: 'cone', ult: 'rain' },
+  cryomancer: { skill: 'nova', ult: 'rain' },
+  assassin: { skill: 'dash', ult: 'nuke' },
+  beastmaster: { skill: 'summon', ult: 'summon' },
+  berserker: { skill: 'whirlwind', ult: 'whirlwind' },
+  necromancer: { skill: 'summon', ult: 'summon' },
+  elementalist: { skill: 'nova', ult: 'nuke' },
+  spellblade: { skill: 'beam', ult: 'beam' },
+  druid: { skill: 'nova', ult: 'summon' },
+  engineer: { skill: 'summon', ult: 'rain' },
+  bloodmage: { skill: 'dash', ult: 'nuke' },
+  monk: { skill: 'dash', ult: 'whirlwind' },
+  chronomancer: { skill: 'timestop', ult: 'timestop' },
+  plague: { skill: 'poison', ult: 'poison' },
+  warlock: { skill: 'beam', ult: 'nuke' },
+  stormcaller: { skill: 'chain', ult: 'chain' },
+  illusionist: { skill: 'summon', ult: 'summon' },
+  dragonborn: { skill: 'cone', ult: 'cone' },
+  runeweaver: { skill: 'meteor', ult: 'nuke' },
+  reaper: { skill: 'cone', ult: 'nuke' },
+  ascended: { skill: 'nova', ult: 'nuke' },
+  puppeteer: { skill: 'summon', ult: 'summon' },
+  architect: { skill: 'summon', ult: 'rain' },
+};
+
 // §33 — эволюция класса от боссов колец 1-3 (кумулятивный множитель к ядру класса).
 export const EVOLUTION_MULT = [1.0, 1.25, 1.5, 2.0]; // ступень 0..3
 

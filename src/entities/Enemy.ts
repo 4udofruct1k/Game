@@ -92,6 +92,13 @@ export class Enemy extends Phaser.Physics.Arcade.Image {
     return this.hp <= 0;
   }
 
+  private frozenT = 0;
+
+  // Заморозка/стан от навыков (напр. Хрономант).
+  freeze(ms: number): void {
+    this.frozenT = Math.max(this.frozenT, ms);
+  }
+
   update(dt: number, ctx: EnemyContext): void {
     if (!this.active) return;
     const body = this.body as Phaser.Physics.Arcade.Body;
@@ -99,6 +106,14 @@ export class Enemy extends Phaser.Physics.Arcade.Image {
     // Статусы (DoT + контроль).
     const dot = tickStatus(this.status, dt);
     if (dot > 0) this.hp -= dot;
+
+    if (this.frozenT > 0) {
+      this.frozenT -= dt * 1000;
+      body.setVelocity(0, 0);
+      this.setTint(0x9fd0ff);
+      return;
+    }
+    this.clearTint();
 
     if (isDisabled(this.status)) {
       body.setVelocity(0, 0);

@@ -89,9 +89,17 @@ export class StartRollScene extends Phaser.Scene {
     });
     // иконка оружия у строки «Оружие» (индекс 2)
     this.weaponIcon = this.add.image(x + 400, y0 + 2 * rowH + 8, 'wpn_sword').setScale(0.22).setOrigin(0.5);
+    // рычаг слот-машины справа от панели (дёргается при спине)
+    const lx = x - 20 + 450 + 24;
+    const ly = y0 + 24;
+    this.add.circle(lx, ly, 9, 0x3a2a20); // корпус крепления
+    const rod = this.add.rectangle(0, 0, 10, 74, 0x8a5a3a).setStrokeStyle(2, 0x5a3a2a).setOrigin(0.5, 0);
+    const knob = this.add.circle(0, 78, 14, 0xd83a3a).setStrokeStyle(2, 0xffe0a0, 0.7);
+    this.lever = this.add.container(lx, ly, [rod, knob]);
   }
 
   private weaponIcon!: Phaser.GameObjects.Image;
+  private lever!: Phaser.GameObjects.Container;
 
   private buildButtons(): void {
     const y = 110 + 34 * this.labels.length + 16;
@@ -128,23 +136,74 @@ export class StartRollScene extends Phaser.Scene {
   private spin(): void {
     if (this.spinning) return;
     this.spinning = true;
-    let ticks = 0;
-    const timer = this.time.addEvent({
-      delay: 60,
-      repeat: 14,
+    // слот-машина: катушки крутятся и фиксируются сверху вниз по очереди
+    this.seedText = randomSeedText();
+    const final = rollStart(this.seedText);
+    const rows = this.labels.length;
+    const locked = new Array<boolean>(rows).fill(false);
+    let elapsed = 0;
+    this.pullLever();
+    this.updateDescription(true);
+    const ev = this.time.addEvent({
+      delay: 45,
+      loop: true,
       callback: () => {
-        this.current = rollStart(randomSeedText());
-        this.renderLoadout(true);
-        ticks++;
-        if (timer.getRepeatCount() === 0) {
-          this.seedText = randomSeedText();
-          this.current = rollStart(this.seedText);
-          this.renderLoadout();
+        elapsed += 45;
+        for (let i = 0; i < rows; i++) {
+          if (!locked[i] && elapsed >= 420 + i * 120) {
+            locked[i] = true;
+            this.setRow(i, final);
+            const t = this.panelTexts[i];
+            t.setAlpha(0.3);
+            this.tweens.add({ targets: t, alpha: 1, duration: 220, ease: 'Quad.easeOut' });
+          }
+        }
+        // крутящиеся строки показывают случайные значения
+        const rnd = rollStart(randomSeedText());
+        for (let i = 0; i < rows; i++) if (!locked[i]) this.setRow(i, rnd);
+        if (locked.every(Boolean)) {
+          ev.remove();
+          this.current = final;
+          this.renderLoadout(false);
           this.spinning = false;
         }
       },
     });
-    void ticks;
+  }
+
+  // Обновить одну строку панели из лоадаута (для катушек слот-машины).
+  private setRow(i: number, l: StartLoadout): void {
+    const cls = CLASS_STATS[l.classId];
+    const ab = CLASS_ABILITIES[l.classId];
+    const put = (text: string, rarity?: keyof typeof RARITY_COLORS) => {
+      const t = this.panelTexts[i];
+      t.setText(text);
+      t.setColor(rarity ? '#' + RARITY_COLORS[rarity].toString(16).padStart(6, '0') : '#e8e8f0');
+    };
+    switch (i) {
+      case 0: put(`${cls.name} [${RARITY_NAMES[l.classRarity]}]`, l.classRarity); break;
+      case 1: put(ab?.skill ?? l.abilitySkill); break;
+      case 2: {
+        put(`${l.weapon.name} [${RARITY_NAMES[l.weapon.rarity]}]`, l.weapon.rarity);
+        const wk = 'wpn_' + l.weapon.archetype;
+        if (this.textures.exists(wk)) this.weaponIcon.setTexture(wk).setVisible(true);
+        break;
+      }
+      case 3: put(l.element === 'none' ? 'нет' : ELEMENT_NAMES[l.element]); break;
+      case 4: put(`${l.blessing.name} [${RARITY_NAMES[l.blessing.rarity]}]`, l.blessing.rarity); break;
+      case 5: put(l.curse ? `${l.curse.name} [${RARITY_NAMES[l.curse.rarity]}]` : '—', l.curse?.rarity); break;
+      case 6: put(l.relic ? `${l.relic.name} [${RARITY_NAMES[l.relic.rarity]}]` : '—', l.relic?.rarity); break;
+      case 7: put(`${l.race.name} [${RARITY_NAMES[l.race.rarity]}]`, l.race.rarity); break;
+      case 8: put(`${computeLevelCap(l)} (сид: ${l.seedText})`); break;
+    }
+  }
+
+  // Рычаг слот-машины: дёргается вниз при спине.
+  private pullLever(): void {
+    if (!this.lever) return;
+    this.tweens.killTweensOf(this.lever);
+    this.lever.setAngle(-20);
+    this.tweens.add({ targets: this.lever, angle: 20, duration: 160, yoyo: true, ease: 'Quad.easeOut' });
   }
 
   private renderLoadout(spinning = false): void {
