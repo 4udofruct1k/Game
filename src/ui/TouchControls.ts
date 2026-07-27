@@ -22,15 +22,15 @@ export class TouchControls {
     this.joyBase = scene.add.circle(0, 0, this.radius, 0xffffff, 0.08).setStrokeStyle(2, 0xffffff, 0.25).setDepth(50).setVisible(false).setScrollFactor(0);
     this.joyThumb = scene.add.circle(0, 0, this.radius * 0.42, 0xffffff, 0.22).setDepth(51).setVisible(false).setScrollFactor(0);
 
-    // Кнопки действий (низ-право) — крупные для пальцев.
-    this.actionButton(w - 88, h - 98, 58, 'РЫВ', 0x3a5a8a, () => (touch.dash = true));
-    this.actionButton(w - 198, h - 152, 54, 'J', 0x2f6a3a, () => (touch.skill = true));
-    this.actionButton(w - 232, h - 66, 52, 'K', 0x7a3a8a, () => (touch.ult = true));
-    this.actionButton(w - 88, h - 212, 52, 'H', 0x2f7a5a, () => (touch.heal = true));
+    // Кнопки действий (низ-право) — крупные, с рисованными иконками и подписью.
+    this.actionButton(w - 96, h - 100, 60, 'icon_dash', 'Рывок', 0x3a5a8a, () => (touch.dash = true));
+    this.actionButton(w - 214, h - 132, 52, 'icon_skill', 'Навык', 0x2f6a3a, () => (touch.skill = true));
+    this.actionButton(w - 158, h - 224, 52, 'icon_ult', 'Ульта', 0x7a3a8a, () => (touch.ult = true));
+    this.actionButton(w - 96, h - 220, 48, 'icon_heal', 'Хилка', 0x2f7a5a, () => (touch.heal = true));
 
     // Кнопки хаб/меню (верх-право под золотом).
-    this.actionButton(w - 54, 150, 36, 'E', 0x394b8a, () => (touch.hub = true));
-    this.actionButton(w - 54, 232, 36, '≡', 0x2a2a3f, () => (touch.menu = true));
+    this.actionButton(w - 54, 162, 34, 'icon_hub', '', 0x394b8a, () => (touch.hub = true));
+    this.actionButton(w - 54, 238, 34, 'icon_menu', '', 0x2a2a3f, () => (touch.menu = true));
 
     // Обработка джойстика.
     scene.input.on('pointerdown', this.onDown, this);
@@ -39,9 +39,17 @@ export class TouchControls {
     scene.input.on('pointerupoutside', this.onUp, this);
   }
 
-  private actionButton(x: number, y: number, r: number, label: string, color: number, press: () => void): void {
-    const c = this.scene.add.circle(x, y, r, color, 0.55).setStrokeStyle(2, 0xffffff, 0.3).setDepth(50).setScrollFactor(0);
-    this.scene.add.text(x, y, label, { fontFamily: 'system-ui', fontSize: `${Math.round(r * 0.7)}px`, color: '#ffffff' }).setOrigin(0.5).setDepth(51).setScrollFactor(0);
+  private actionButton(x: number, y: number, r: number, iconKey: string, label: string, color: number, press: () => void): void {
+    const c = this.scene.add.circle(x, y, r, color, 0.55).setStrokeStyle(3, 0xffffff, 0.35).setDepth(50).setScrollFactor(0);
+    // рисованная иконка (фолбэк на текст-метку, если текстуры нет)
+    if (this.scene.textures.exists(iconKey)) {
+      this.scene.add.image(x, y, iconKey).setScale((r * 1.1) / 96).setDepth(51).setScrollFactor(0);
+    } else {
+      this.scene.add.text(x, y, iconKey, { fontFamily: 'system-ui', fontSize: `${Math.round(r * 0.7)}px`, color: '#fff' }).setOrigin(0.5).setDepth(51).setScrollFactor(0);
+    }
+    if (label) {
+      this.scene.add.text(x, y + r + 2, label, { fontFamily: 'system-ui', fontSize: '13px', color: '#e8ecff', fontStyle: 'bold' }).setOrigin(0.5, 0).setDepth(51).setScrollFactor(0).setShadow(1, 1, '#000', 2);
+    }
     c.setInteractive({ useHandCursor: true });
     c.on('pointerdown', (p: Phaser.Input.Pointer) => {
       touch.enabled = true;

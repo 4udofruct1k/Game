@@ -11,12 +11,17 @@ import { BOSSES_BY_RING, type BossDef } from '../data/bosses';
 import { WEAPON_ARCHETYPES, WEAPON_ITEMS, type WeaponItemDef } from '../data/weapons';
 import { fullHit, weaponAV, type HitInput } from '../core/damage';
 import type { Rarity } from '../data/rarity';
+import { RARITY_NAMES } from '../data/rarity';
+import { RARITY_COLORS } from '../data/theme';
 import { applyElement, vulnMult } from '../core/statusEngine';
 import { grantKillReward } from '../core/economy';
 import { REACTIONS, type Element } from '../data/elements';
 import { CLASS_STATS, CLASS_ABILITIES, CLASS_ABILITY, type AbilityKind } from '../data/classes';
 import { touch, consumeTouch } from '../core/touchInput';
 import { RNG, hashSeed } from '../core/rng';
+import { ARMOR_SLOTS, ARMOR_SLOT_NAMES, CLASS_SETS } from '../data/armor';
+import { nativeWeight, type ArmorPiece } from '../core/stats';
+import { RARITY_ORDER } from '../data/rarity';
 
 // Радиус, за которым мобы (не боссы) деспавнятся и переспавниваются ближе к игроку.
 const CULL_RANGE = 1500;
@@ -70,6 +75,8 @@ export class WorldScene extends Phaser.Scene {
   private bossObj: Boss | null = null;
   // временные турели/миньоны от навыков
   private summons: { x: number; y: number; spr: Phaser.GameObjects.Image; until: number; cd: number; coef: number }[] = [];
+  // наземные дропы брони
+  private armorDrops: { x: number; y: number; piece: ArmorPiece; gfx: Phaser.GameObjects.Container }[] = [];
   // фиксированные точки боссов (по одной на кольцо), всегда на карте
   private bossAnchors: { ring: number; id: string; x: number; y: number }[] = [];
   // декор биомов (чанки вокруг игрока) + сундуки
@@ -336,6 +343,7 @@ export class WorldScene extends Phaser.Scene {
     this.updateTelegraphs(time);
     this.updateProjectilesCleanup();
     this.updatePickups();
+    this.updateArmorPickups();
     this.updateDecorations(dt);
     this.updateChests();
     this.updateSummons(dtMs, time);
@@ -638,7 +646,93 @@ export class WorldScene extends Phaser.Scene {
         const r = ult ? 460 : 290;
         this.novaRing(px, py, r, col);
         this.aoeBurst(px, py, r, input, el, col);
+        if (el === 'ice') this.freezeInRadius(px, py, r, ult ? 2200 : 1400);
         break;
+      }
+      case 'arc': {
+        // Рассекающий удар / жатва — фронтальный росчерк-дуга
+        const range = ult ? 320 : 240;
+        const arc = 1.6;
+        const ang = this.player.facing.angle();
+        this.player.playAttack('melee');
+        const fx = { x: px + Math.cos(ang) * range * 0.4, y: py + Math.sin(ang) * range * 0.4 };
+        this.spinSlash(fx.x, fx.y, range, 0xffffff, ang / 1.4);
+        this.coneStrike(range, arc, input, el, col);
+        break;
+      }
+      case 'fireball': {
+        // летящий шар, взрывается впереди/по цели
+        const ang = this.player.facing.angle();
+        const t = this.nearestEnemyPos() ?? { x: px + Math.cos(ang) * 320, y: py + Math.sin(ang) * 320 };
+        const proj = this.getProjectile(this.pProj, this.pProjGroup);
+        (proj as Projectile & { hitInput?: HitInput }).hitInput = input;
+        proj.fire(px, py, Math.cos(ang) * 700, Math.sin(ang) * 700, { owner: 'player', raw: 0, element: el, isTrue: false, crit: false, pierce: 1 }, 16, 'proj_orb');
+        this.time.delayedCall(200, () => {
+          const r = 150;
+          this.novaRing(t.x, t.y, r, 0xff7030);
+          this.aoeBurst(t.x, t.y, r, input, el, 0xff7030);
+        });
+        break;
+      }
+      case 'zone': {
+        // Освящённая земля — лечащая/жгущая зона под игроком
+        this.playerCloud(px, py, ult ? 300 : 220, ult ? 6 : 5, input, el === 'none' ? 'radiance' : el);
+        this.run.currentHP = Math.min(this.run.stats().maxHP, this.run.currentHP + this.run.stats().maxHP * 0.1);
+        break;
+      }
+      case 'storm': {
+        // Гроза — серия ударов молний по врагам вокруг за ~2с
+        const strikes = ult ? 10 : 6;
+        for (let i = 0; i < strikes; i++) {
+          this.time.delayedCall(i * 200, () => {
+            const e = this.randomNearbyEnemy(560);
+            const tx = e ? e.x : px + (Math.random() - 0.5) * 500;
+            const ty = e ? e.y : py + (Math.random() - 0.5) * 500;
+            this.novaRing(tx, ty, 110, 0x9fe0ff);
+            this.aoeBurst(tx, ty, 110, input, el, 0x9fe0ff);
+          });
+        }
+        break;
+      }
+      case 'void': {
+        // Разлом Пустоты — притягивает врагов к центру + урон
+        const r = ult ? 480 : 340;
+        this.novaRing(px, py, r, 0xb060ff);
+        for (const e of this.enemies) {
+          if (!e.active) continue;
+          const d = Phaser.Math.Distance.Between(px, py, e.x, e.y);
+          if (d > r) continue;
+          const ang = Phaser.Math.Angle.Between(e.x, e.y, px, py);
+          e.setPosition(e.x + Math.cos(ang) * Math.min(d * 0.6, 220), e.y + Math.sin(ang) * Math.min(d * 0.6, 220));
+        }
+        this.time.delayedCall(140, () => this.aoeBurst(px, py, r * 0.7, input, 'void', 0xb060ff));
+        break;
+      }
+      case 'rune': {
+        // Начертать руну — печать на земле, срабатывает с задержкой
+        const rx = px, ry = py;
+        const ring = this.add.circle(rx, ry, ult ? 220 : 150, 0x9f7aff, 0).setStrokeStyle(4, 0x9f7aff, 0.8).setDepth(4);
+        this.tweens.add({ targets: ring, angle: 180, duration: 500, onComplete: () => ring.destroy() });
+        this.time.delayedCall(500, () => {
+          const r = ult ? 220 : 150;
+          this.novaRing(rx, ry, r, 0xc79bff);
+          this.aoeBurst(rx, ry, r, input, el, 0xc79bff);
+        });
+        break;
+      }
+      case 'buff': {
+        // Смена формы — щит + рывок силы + волна
+        this.player.grantShield(ult ? 3000 : 1800);
+        this.run.currentHP = Math.min(this.run.stats().maxHP, this.run.currentHP + this.run.stats().maxHP * 0.12);
+        this.novaRing(px, py, 260, 0x7ae090);
+        this.aoeBurst(px, py, 260, input, el, 0x7ae090);
+        break;
+      }
+      case 'random': {
+        // Адаптивный навык (Вознесённый) — случайное действие
+        const pool: AbilityKind[] = ['nova', 'meteor', 'chain', 'volley', 'whirlwind', 'beam'];
+        this.performAbility(pool[Math.floor(Math.random() * pool.length)], coef, ult);
+        return;
       }
       case 'nuke': {
         // экранный удар: расширяющаяся волна + мощный AoE
@@ -657,9 +751,11 @@ export class WorldScene extends Phaser.Scene {
           const a = Math.random() * Math.PI * 2;
           const d = Math.sqrt(Math.random()) * R;
           const x = px + Math.cos(a) * d, y = py + Math.sin(a) * d;
+          const rainCol = el === 'ice' ? 0x9fd8ff : 0xff9a40;
           this.time.delayedCall(100 + i * 70, () => {
-            this.fxCircle(x, y, 78, 0xff7a30, 0.4);
-            this.aoeBurst(x, y, 86, input, el, 0xff9a40);
+            this.fxCircle(x, y, 78, rainCol, 0.4);
+            this.aoeBurst(x, y, 86, input, el, rainCol);
+            if (el === 'ice') this.freezeInRadius(x, y, 90, 1500);
           });
         }
         break;
@@ -752,7 +848,9 @@ export class WorldScene extends Phaser.Scene {
 
   private skillElement(): Element {
     const w = this.run.loadout.weapon.element;
-    return w !== 'none' ? w : this.run.loadout.element;
+    if (w !== 'none') return w;
+    if (this.run.loadout.element !== 'none') return this.run.loadout.element;
+    return CLASS_STATS[this.run.loadout.classId].affinity; // напр. пиромант=огонь, криомант=лёд
   }
 
   private nearestEnemyPos(): { x: number; y: number } | null {
@@ -876,15 +974,26 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // Ядовитое облако — залипающая зона (переиспользует систему телеграфов как DoT).
-  private playerCloud(x: number, y: number, r: number, ticks: number, input: HitInput): void {
-    this.fxCircle(x, y, r, 0x8fd24a, 0.28);
+  private playerCloud(x: number, y: number, r: number, ticks: number, input: HitInput, el: Element = 'poison'): void {
+    const color = el === 'radiance' ? 0xffe89a : el === 'poison' ? 0x8fd24a : ELEMENT_COLORS[el] ?? 0x8fd24a;
+    this.fxCircle(x, y, r, color, 0.26);
     for (let i = 0; i < ticks; i++) {
       this.time.delayedCall(i * 400, () => {
-        this.fxCircle(x, y, r, 0x8fd24a, 0.14);
-        for (const e of this.enemies) if (e.active && Phaser.Math.Distance.Between(x, y, e.x, e.y) <= r) this.dealToEnemy(e, input, 'poison');
-        if (this.boss && this.boss.active && Phaser.Math.Distance.Between(x, y, this.boss.x, this.boss.y) <= r) this.dealToBoss(input, 'poison');
+        this.fxCircle(x, y, r, color, 0.13);
+        for (const e of this.enemies) if (e.active && Phaser.Math.Distance.Between(x, y, e.x, e.y) <= r) this.dealToEnemy(e, input, el);
+        if (this.boss && this.boss.active && Phaser.Math.Distance.Between(x, y, this.boss.x, this.boss.y) <= r) this.dealToBoss(input, el);
       });
     }
+  }
+
+  private freezeInRadius(x: number, y: number, r: number, ms: number): void {
+    for (const e of this.enemies) if (e.active && Phaser.Math.Distance.Between(x, y, e.x, e.y) <= r) e.freeze(ms);
+  }
+
+  private randomNearbyEnemy(range: number): Enemy | null {
+    const near = this.enemies.filter((e) => e.active && Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y) <= range);
+    if (near.length) return near[Math.floor(Math.random() * near.length)];
+    return null;
   }
 
   // Временная турель/миньон: стреляет по ближайшему врагу.
@@ -1318,9 +1427,69 @@ export class WorldScene extends Phaser.Scene {
     }
     if (gained > 0) this.onLevelUp(gained);
     this.spawnPickupFx(e.x, e.y, 0xf0c040);
+    this.rollEnemyDrop(e);
     this.enemyGroup.remove(e);
     this.touchCd.delete(e);
     e.kill();
+  }
+
+  // Дроп снаряги/оружия из моба (редко; чаще с элиток и в дальних кольцах).
+  private rollEnemyDrop(e: Enemy): void {
+    const ring = Math.max(1, this.ringOf(Phaser.Math.Distance.Between(e.x, e.y, this.center.x, this.center.y)));
+    const eliteMul = e.isElite ? 3.2 : 1;
+    // редкость дропа растёт с кольцом (+шанс на ступень выше)
+    const bump = Math.random() < 0.22 ? 1 : 0;
+    const rarity = RARITY_ORDER[Phaser.Math.Clamp(ring - 1 + bump, 0, 5)];
+    if (Math.random() < 0.06 * eliteMul) {
+      // оружие
+      const pool = WEAPON_ITEMS.filter((w) => w.rarity === rarity);
+      const weapon = Phaser.Utils.Array.GetRandom(pool.length ? pool : WEAPON_ITEMS);
+      this.spawnWeaponPickup(weapon, ring, e.x, e.y);
+    } else if (Math.random() < 0.1 * eliteMul) {
+      // броня случайного слота
+      const slot = ARMOR_SLOTS[Phaser.Math.Between(0, ARMOR_SLOTS.length - 1)];
+      const classId = this.run.loadout.classId;
+      const setId = CLASS_SETS[classId] ? classId : 'warrior';
+      const piece: ArmorPiece = { setId, slot, rarity, weight: nativeWeight(classId), tier: ring, enchant: 0 };
+      this.spawnArmorPickup(piece, e.x, e.y);
+    }
+  }
+
+  private armorScore(p: ArmorPiece): number {
+    return RARITY_ORDER.indexOf(p.rarity) * 10 + p.tier * 3 + p.enchant;
+  }
+
+  private spawnArmorPickup(piece: ArmorPiece, x: number, y: number): void {
+    const color = RARITY_COLORS[piece.rarity] ?? 0x8fb0e0;
+    const ring = this.add.circle(0, 0, 17, color, 0.85).setStrokeStyle(3, 0xffffff, 0.9);
+    const key = 'armor_' + piece.slot;
+    const icon: Phaser.GameObjects.GameObject = this.textures.exists(key)
+      ? this.add.image(0, 0, key).setScale(0.34).setOrigin(0.5).setTint(color)
+      : this.add.text(0, 0, '⛊', { fontFamily: 'system-ui', fontSize: '15px', color: '#fff' }).setOrigin(0.5);
+    const c = this.add.container(x, y, [ring, icon]).setDepth(9);
+    this.tweens.add({ targets: c, y: y - 6, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
+    this.armorDrops.push({ x, y, piece, gfx: c });
+  }
+
+  private updateArmorPickups(): void {
+    for (let i = this.armorDrops.length - 1; i >= 0; i--) {
+      const d = this.armorDrops[i];
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, d.x, d.y) > 42) continue;
+      const cur = this.run.build.armor[d.piece.slot];
+      const better = !cur || this.armorScore(d.piece) > this.armorScore(cur);
+      if (better) {
+        this.run.equipArmor(d.piece.slot, d.piece);
+        this.player.refreshFromStats();
+        this.flashBanner(`Броня: ${ARMOR_SLOT_NAMES[d.piece.slot]} [${RARITY_NAMES[d.piece.rarity]}]`, 2200);
+      } else {
+        // хуже текущей — продаём за золото
+        this.run.wallet.gold += 15 * (RARITY_ORDER.indexOf(d.piece.rarity) + 1);
+        this.flashBanner('Броня продана (+золото)', 1400);
+      }
+      this.tweens.killTweensOf(d.gfx);
+      d.gfx.destroy();
+      this.armorDrops.splice(i, 1);
+    }
   }
 
   // Убрать моба без награды (отсев по дальности).
@@ -1382,8 +1551,10 @@ export class WorldScene extends Phaser.Scene {
     const color = ELEMENT_COLORS[weapon.element] ?? 0xf0c040;
     const ring2 = this.add.circle(0, 0, 18, color, 0.85).setStrokeStyle(3, 0xffffff, 0.9);
     const key = 'wpn_' + weapon.archetype;
+    // тинт по стихии оружия — разные виды выглядят по-разному
+    const eTint = weapon.element !== 'none' ? (ELEMENT_COLORS[weapon.element] ?? 0xffffff) : 0xffffff;
     const icon: Phaser.GameObjects.GameObject = this.textures.exists(key)
-      ? this.add.image(0, 0, key).setScale(0.42).setOrigin(0.5)
+      ? this.add.image(0, 0, key).setScale(0.42).setOrigin(0.5).setTint(eTint)
       : this.add.text(0, 0, '⚔', { fontFamily: 'system-ui', fontSize: '16px', color: '#fff' }).setOrigin(0.5);
     const c = this.add.container(x, y, [ring2, icon]).setDepth(9);
     this.tweens.add({ targets: c, y: y - 6, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut' });

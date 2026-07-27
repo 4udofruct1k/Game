@@ -21,6 +21,9 @@ export class BootScene extends Phaser.Scene {
     }
     this.load.image('aura', 'sprites/aura.png');
     this.load.image('slash', 'sprites/slash.png');
+    // иконки интерфейса (рисованные, не эмодзи)
+    for (const ic of ['hp', 'energy', 'ult', 'gold', 'dash', 'skill', 'heal', 'hub', 'menu'])
+      this.load.image('icon_' + ic, 'sprites/icon_' + ic + '.png');
     for (const ring of Object.values(MOBS_BY_RING)) {
       for (const m of ring) this.load.image('mob_' + m.id, 'sprites/mob_' + m.id + '.png');
     }

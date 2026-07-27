@@ -1071,6 +1071,75 @@ def f_race(g, cfg, frame):
         for yy in (0.42, 0.48, 0.54):
             g.rect(cx-n*0.06, ty+n*yy*0.2, cx+n*0.06, ty+n*yy*0.2+n*0.02, blt)  # брюшные пластины
 
+# ---- ИКОНКИ ИНТЕРФЕЙСА (рисуем сами, без эмодзи) ----
+def ic_heart(g):
+    n = g.n; cx = n/2; r = (230,64,84)
+    g.ellipse(cx-n*0.17, n*0.36, n*0.17, n*0.17, r)
+    g.ellipse(cx+n*0.17, n*0.36, n*0.17, n*0.17, r)
+    g.tri([(cx-n*0.34, n*0.42), (cx+n*0.34, n*0.42), (cx, n*0.84)], r)
+    g.ellipse(cx-n*0.1, n*0.3, n*0.05, n*0.05, (255,180,190))
+
+def ic_bolt(g):
+    n = g.n; cx = n/2; c = (110,230,220)
+    g.tri([(cx+n*0.12, n*0.1), (cx-n*0.22, n*0.56), (cx+n*0.04, n*0.52)], c)
+    g.tri([(cx-n*0.04, n*0.44), (cx+n*0.22, n*0.44), (cx-n*0.12, n*0.9)], c)
+
+def ic_star(g):
+    import math
+    n = g.n; cx = n/2; c = (214,176,255)
+    pts = []
+    for i in range(10):
+        ang = -math.pi/2 + i*math.pi/5
+        rr = n*0.42 if i % 2 == 0 else n*0.18
+        pts.append((cx+math.cos(ang)*rr, cx+math.sin(ang)*rr))
+    for i in range(10):
+        g.tri([(cx, cx), pts[i], pts[(i+1) % 10]], c)
+
+def ic_coin(g):
+    n = g.n; cx = n/2
+    g.ellipse(cx, cx, n*0.4, n*0.4, (200,158,58))
+    g.ellipse(cx, cx, n*0.31, n*0.31, (242,210,112))
+    g.rect(cx-n*0.04, cx-n*0.17, cx+n*0.04, cx+n*0.17, (170,124,44))
+    g.rect(cx-n*0.13, cx-n*0.04, cx+n*0.13, cx+n*0.04, (170,124,44))
+
+def ic_dash(g):
+    n = g.n; c = (230,236,255)
+    for ox in (-0.16, 0.08):
+        g.line(n*(0.34+ox), n*0.26, n*(0.54+ox), n*0.5, c, 3)
+        g.line(n*(0.54+ox), n*0.5, n*(0.34+ox), n*0.74, c, 3)
+
+def ic_skill(g):
+    import math
+    n = g.n; cx = n/2; c = (150,205,255)
+    for i in range(8):
+        ang = i*math.pi/4
+        g.line(cx, cx, cx+math.cos(ang)*n*0.42, cx+math.sin(ang)*n*0.42, c, 2)
+    g.ellipse(cx, cx, n*0.15, n*0.15, (255,255,255))
+
+def ic_heal(g):
+    n = g.n; cx = n/2; c = (120,222,132)
+    g.rect(cx-n*0.09, n*0.18, cx+n*0.09, n*0.82, c)
+    g.rect(cx-n*0.32, n*0.41, cx+n*0.32, n*0.59, c)
+    g.rect(cx-n*0.03, n*0.22, cx+n*0.03, n*0.78, (215,255,220))
+
+def ic_house(g):
+    n = g.n; cx = n/2
+    g.tri([(cx-n*0.42, n*0.52), (cx, n*0.14), (cx+n*0.42, n*0.52)], (186,92,72))
+    g.rect(cx-n*0.28, n*0.52, cx+n*0.28, n*0.84, (204,178,142))
+    g.rect(cx-n*0.09, n*0.6, cx+n*0.09, n*0.84, (96,62,38))
+
+def ic_menu(g):
+    n = g.n; c = (222,226,240)
+    for yy in (0.3, 0.48, 0.66):
+        g.rect(n*0.2, n*yy, n*0.8, n*yy+n*0.09, c)
+
+ICONS = {
+    'icon_hp': ic_heart, 'icon_energy': ic_bolt, 'icon_ult': ic_star, 'icon_gold': ic_coin,
+    'icon_dash': ic_dash, 'icon_skill': ic_skill, 'icon_heal': ic_heal,
+    'icon_hub': ic_house, 'icon_menu': ic_menu,
+}
+
+
 def build_aura():
     import math
     size = 96; img = Image.new('RGBA', (size, size), (0, 0, 0, 0)); px = img.load()
@@ -1142,6 +1211,8 @@ def main():
     build_creature('hero', (lambda g, p: f_race(g, RACE_CFG['human'], 0)), None, {}, 48, 4, mirror=False)
     build_aura()
     build_flat('slash', p_slash, 48, 4, do_shade=False)  # росчерк удара
+    for key, fn in ICONS.items():
+        build_flat(key, fn, 24, 4, do_shade=False)
     print('готово: %d существ, %d боссов, %d оружий, %d снарядов, %d предметов, %d пропов, %d декора, %d брони, %d рас+аура'
           % (len(SPRITES), len(BOSSES), len(WEAPONS), len(PROJECTILES), len(ITEMS), len(PROPS), len(DECOS), len(WORN), len(RACE_CFG)))
 

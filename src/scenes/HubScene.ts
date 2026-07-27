@@ -5,7 +5,8 @@ import { armorPrice, enchantCost, REROLL_COST } from '../core/economy';
 import { ARMOR_SLOTS, ARMOR_SLOT_NAMES, CLASS_SETS, type ArmorSlot } from '../data/armor';
 import { nativeWeight } from '../core/stats';
 import { ENCHANT_MAX } from '../data/balance';
-import { RARITY_NAMES } from '../data/rarity';
+import { RARITY_NAMES, RARITY_ORDER, type Rarity } from '../data/rarity';
+import { RARITY_COLORS } from '../data/theme';
 import { BASE_W, BASE_H } from '../data/balance';
 import { centerUICamera, addFullscreenButton } from '../ui/layout';
 
@@ -88,22 +89,35 @@ export class HubScene extends Phaser.Scene {
     const weight = nativeWeight(classId);
     ARMOR_SLOTS.forEach((slot: ArmorSlot, i) => {
       const yy = y + 30 + i * 38;
-      const price = armorPrice(1, 'common');
-      this.add.image(x + 11, yy + 7, 'armor_' + slot).setOrigin(0.5).setScale(0.22);
+      const armorIcon = this.add.image(x + 11, yy + 7, 'armor_' + slot).setOrigin(0.5).setScale(0.22);
       const label = this.add.text(x + 28, yy, '', { fontFamily: 'system-ui', fontSize: '12px', color: '#e0e0ee' });
-      this.makeButton(x + 210, yy - 4, 80, 26, `${price}⦿`, 0x394b8a, () => {
+      // цена/редкость следующей покупки — на ступень выше текущей
+      const nextRarity = (): Rarity => {
+        const eq = run.build.armor[slot];
+        const idx = eq ? Math.min(5, RARITY_ORDER.indexOf(eq.rarity) + 1) : Math.min(5, run.bossesKilled.length);
+        return RARITY_ORDER[idx];
+      };
+      const btn = this.makeButton(x + 200, yy - 4, 96, 26, '', 0x394b8a, () => {
+        const rar = nextRarity();
+        const eq = run.build.armor[slot];
+        if (eq && RARITY_ORDER.indexOf(eq.rarity) >= 5) { this.flash('Уже мифическая'); return; }
+        const price = armorPrice(run.bossesKilled.length + 1, rar);
         if (run.wallet.gold >= price) {
           run.wallet.gold -= price;
-          run.equipArmor(slot, { setId, slot, rarity: 'common', weight, tier: 1, enchant: 0 });
-          this.flash(`Надето: ${ARMOR_SLOT_NAMES[slot]}`);
+          run.equipArmor(slot, { setId, slot, rarity: rar, weight, tier: run.bossesKilled.length + 1, enchant: eq?.enchant ?? 0 });
+          this.flash(`${ARMOR_SLOT_NAMES[slot]}: ${RARITY_NAMES[rar]}`);
           this.refresh();
         } else this.flash('Мало золота');
       });
+      const btnLabel = (btn.list[1] as Phaser.GameObjects.Text);
       this.rows.push({
         refresh: () => {
           const eq = run.build.armor[slot];
           label.setText(`${ARMOR_SLOT_NAMES[slot]} ${eq ? `[${RARITY_NAMES[eq.rarity]}] +${eq.enchant}` : '(пусто)'}`);
           label.setColor(eq ? '#8fd08f' : '#999');
+          armorIcon.setTint(eq ? (RARITY_COLORS[eq.rarity] ?? 0xffffff) : 0x888888);
+          const maxed = eq && RARITY_ORDER.indexOf(eq.rarity) >= 5;
+          btnLabel.setText(maxed ? 'макс' : `${armorPrice(run.bossesKilled.length + 1, nextRarity())}⦿`);
         },
       });
     });
@@ -138,11 +152,14 @@ export class HubScene extends Phaser.Scene {
       } else this.flash('Не хватает золота/осколков');
     });
 
-    this.makeButton(x, y + 146, 220, 30, `Реролл суб-статов (${REROLL_COST.gold}⦿ + пыль)`, 0x394b8a, () => {
+    this.makeButton(x, y + 146, 220, 30, `Зачаровать броню +тир (${REROLL_COST.gold}⦿ + пыль)`, 0x394b8a, () => {
+      const equipped = Object.values(run.build.armor).filter(Boolean);
+      if (equipped.length === 0) { this.flash('Сначала надень броню'); return; }
       if (run.wallet.gold >= REROLL_COST.gold && run.wallet.rerollDust >= REROLL_COST.dust) {
         run.wallet.gold -= REROLL_COST.gold;
         run.wallet.rerollDust -= REROLL_COST.dust;
-        this.flash('Суб-статы перекатаны');
+        for (const p of equipped) if (p && p.enchant < ENCHANT_MAX) p.enchant += 1;
+        this.flash('Вся броня зачарована +1');
         this.refresh();
       } else this.flash('Нужна пыль реролла');
     });
