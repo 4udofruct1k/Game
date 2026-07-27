@@ -626,7 +626,11 @@ export class WorldScene extends Phaser.Scene {
   private performAbility(kind: AbilityKind, coef: number, ult: boolean): void {
     const input = this.baseHitInput(coef);
     const el = this.skillElement();
+    // навык несёт стихию класса/оружия целиком (урон по элементу + реакции)
+    input.weaponElement = el;
     const col = ELEMENT_COLORS[el] ?? 0x9fd0ff;
+    // классы со стихией красят эффект по своей стихии; без стихии — тематич. цвет
+    const fx = (def: number) => (el !== 'none' ? col : def);
     const px = this.player.x, py = this.player.y;
     switch (kind) {
       case 'whirlwind': {
@@ -637,7 +641,7 @@ export class WorldScene extends Phaser.Scene {
           this.time.delayedCall(i * 85, () => {
             if (!this.player.active) return;
             this.spinSlash(this.player.x, this.player.y, r, col, i);
-            this.aoeBurst(this.player.x, this.player.y, r, input, el, 0xffd066);
+            this.aoeBurst(this.player.x, this.player.y, r, input, el, fx(0xffd066));
           });
         }
         break;
@@ -669,8 +673,8 @@ export class WorldScene extends Phaser.Scene {
         proj.fire(px, py, Math.cos(ang) * 700, Math.sin(ang) * 700, { owner: 'player', raw: 0, element: el, isTrue: false, crit: false, pierce: 1 }, 16, 'proj_orb');
         this.time.delayedCall(200, () => {
           const r = 150;
-          this.novaRing(t.x, t.y, r, 0xff7030);
-          this.aoeBurst(t.x, t.y, r, input, el, 0xff7030);
+          this.novaRing(t.x, t.y, r, fx(0xff7030));
+          this.aoeBurst(t.x, t.y, r, input, el, fx(0xff7030));
         });
         break;
       }
@@ -688,8 +692,8 @@ export class WorldScene extends Phaser.Scene {
             const e = this.randomNearbyEnemy(560);
             const tx = e ? e.x : px + (Math.random() - 0.5) * 500;
             const ty = e ? e.y : py + (Math.random() - 0.5) * 500;
-            this.novaRing(tx, ty, 110, 0x9fe0ff);
-            this.aoeBurst(tx, ty, 110, input, el, 0x9fe0ff);
+            this.novaRing(tx, ty, 110, fx(0x9fe0ff));
+            this.aoeBurst(tx, ty, 110, input, el, fx(0x9fe0ff));
           });
         }
         break;
@@ -715,8 +719,8 @@ export class WorldScene extends Phaser.Scene {
         this.tweens.add({ targets: ring, angle: 180, duration: 500, onComplete: () => ring.destroy() });
         this.time.delayedCall(500, () => {
           const r = ult ? 220 : 150;
-          this.novaRing(rx, ry, r, 0xc79bff);
-          this.aoeBurst(rx, ry, r, input, el, 0xc79bff);
+          this.novaRing(rx, ry, r, fx(0xc79bff));
+          this.aoeBurst(rx, ry, r, input, el, fx(0xc79bff));
         });
         break;
       }
@@ -737,9 +741,9 @@ export class WorldScene extends Phaser.Scene {
       case 'nuke': {
         // экранный удар: расширяющаяся волна + мощный AoE
         const r = ult ? 620 : 420;
-        this.novaRing(px, py, r, 0xffe08a);
+        this.novaRing(px, py, r, fx(0xffe08a));
         this.time.delayedCall(60, () => this.novaRing(px, py, r * 0.7, col));
-        this.aoeBurst(px, py, r, input, el, 0xffcf6a);
+        this.aoeBurst(px, py, r, input, el, fx(0xffcf6a));
         if (this.run.loadout.classId === 'bloodmage') this.run.currentHP = Math.min(this.run.stats().maxHP, this.run.currentHP + this.run.stats().maxHP * 0.2);
         break;
       }
@@ -751,7 +755,7 @@ export class WorldScene extends Phaser.Scene {
           const a = Math.random() * Math.PI * 2;
           const d = Math.sqrt(Math.random()) * R;
           const x = px + Math.cos(a) * d, y = py + Math.sin(a) * d;
-          const rainCol = el === 'ice' ? 0x9fd8ff : 0xff9a40;
+          const rainCol = el !== 'none' ? col : 0xff9a40;
           this.time.delayedCall(100 + i * 70, () => {
             this.fxCircle(x, y, 78, rainCol, 0.4);
             this.aoeBurst(x, y, 86, input, el, rainCol);
@@ -763,11 +767,11 @@ export class WorldScene extends Phaser.Scene {
       case 'meteor': {
         // одиночный тяжёлый снаряд-взрыв в цель/по направлению
         const t = this.nearestEnemyPos() ?? { x: px + Math.cos(this.player.facing.angle()) * 300, y: py + Math.sin(this.player.facing.angle()) * 300 };
-        this.fxCircle(t.x, t.y, 30, 0xff5020, 0.3);
+        this.fxCircle(t.x, t.y, 30, fx(0xff5020), 0.3);
         this.time.delayedCall(ult ? 260 : 200, () => {
           const r = ult ? 260 : 170;
-          this.novaRing(t.x, t.y, r, 0xff7030);
-          this.aoeBurst(t.x, t.y, r, input, el, 0xff7030);
+          this.novaRing(t.x, t.y, r, fx(0xff7030));
+          this.aoeBurst(t.x, t.y, r, input, el, fx(0xff7030));
           this.cameras.main.shake(140, 0.006);
         });
         break;
@@ -798,7 +802,7 @@ export class WorldScene extends Phaser.Scene {
         break;
       }
       case 'chain': {
-        this.chainLightning(ult ? 8 : 5, input, el);
+        this.chainLightning(ult ? 8 : 5, input, el, fx(0x9fe0ff));
         break;
       }
       case 'dash': {
@@ -832,7 +836,7 @@ export class WorldScene extends Phaser.Scene {
         this.novaRing(px, py, r, 0x9fd0ff);
         this.time.delayedCall(80, () => this.novaRing(px, py, r * 0.6, 0xd0e8ff));
         for (const e of this.enemies) if (e.active && Phaser.Math.Distance.Between(px, py, e.x, e.y) <= r) e.freeze(ult ? 2500 : 1400);
-        this.aoeBurst(px, py, r, input, el, 0xbfe0ff);
+        this.aoeBurst(px, py, r, input, el, fx(0xbfe0ff));
         break;
       }
       case 'summon': {
@@ -931,7 +935,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   // Цепная молния между ближайшими врагами.
-  private chainLightning(jumps: number, input: HitInput, el: Element): void {
+  private chainLightning(jumps: number, input: HitInput, el: Element, lineCol = 0x9fe0ff): void {
     const targets: { x: number; y: number; e?: Enemy }[] = [];
     const used = new Set<Enemy>();
     let from = { x: this.player.x, y: this.player.y };
@@ -947,7 +951,7 @@ export class WorldScene extends Phaser.Scene {
       targets.push({ x: best.x, y: best.y, e: best });
       from = { x: best.x, y: best.y };
     }
-    const g = this.add.graphics().setDepth(8).lineStyle(3, 0x9fe0ff, 0.9);
+    const g = this.add.graphics().setDepth(8).lineStyle(3, lineCol, 0.9);
     let prev = { x: this.player.x, y: this.player.y };
     for (const t of targets) { g.lineBetween(prev.x, prev.y, t.x, t.y); prev = t; }
     this.tweens.add({ targets: g, alpha: 0, duration: 240, onComplete: () => g.destroy() });
