@@ -22,15 +22,15 @@ export class TouchControls {
     this.joyBase = scene.add.circle(0, 0, this.radius, 0xffffff, 0.08).setStrokeStyle(2, 0xffffff, 0.25).setDepth(50).setVisible(false).setScrollFactor(0);
     this.joyThumb = scene.add.circle(0, 0, this.radius * 0.42, 0xffffff, 0.22).setDepth(51).setVisible(false).setScrollFactor(0);
 
-    // Кнопки действий (низ-право) — крупные, с рисованными иконками и подписью.
-    this.actionButton(w - 96, h - 100, 60, 'icon_dash', 'Рывок', 0x3a5a8a, () => (touch.dash = true));
-    this.actionButton(w - 214, h - 132, 52, 'icon_skill', 'Навык', 0x2f6a3a, () => (touch.skill = true));
-    this.actionButton(w - 158, h - 224, 52, 'icon_ult', 'Ульта', 0x7a3a8a, () => (touch.ult = true));
-    this.actionButton(w - 96, h - 220, 48, 'icon_heal', 'Хилка', 0x2f7a5a, () => (touch.heal = true));
+    // Кнопки действий (низ-право) — чистая сетка 2×2, без наложений.
+    this.actionButton(w - 92, h - 96, 56, 'icon_dash', 'Рывок', 0x3a5a8a, () => (touch.dash = true));
+    this.actionButton(w - 214, h - 96, 50, 'icon_skill', 'Навык', 0x2f6a3a, () => (touch.skill = true));
+    this.actionButton(w - 92, h - 228, 50, 'icon_heal', 'Хилка', 0x2f7a5a, () => (touch.heal = true));
+    this.actionButton(w - 214, h - 228, 50, 'icon_ult', 'Ульта', 0x7a3a8a, () => (touch.ult = true));
 
     // Кнопки хаб/меню (верх-право под золотом).
-    this.actionButton(w - 54, 162, 34, 'icon_hub', '', 0x394b8a, () => (touch.hub = true));
-    this.actionButton(w - 54, 238, 34, 'icon_menu', '', 0x2a2a3f, () => (touch.menu = true));
+    this.actionButton(w - 54, 168, 34, 'icon_hub', '', 0x394b8a, () => (touch.hub = true));
+    this.actionButton(w - 54, 248, 34, 'icon_menu', '', 0x2a2a3f, () => (touch.menu = true));
 
     // Обработка джойстика.
     scene.input.on('pointerdown', this.onDown, this);

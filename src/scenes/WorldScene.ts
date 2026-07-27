@@ -880,11 +880,38 @@ export class WorldScene extends Phaser.Scene {
     this.tweens.add({ targets: s, rotation: i * 1.4 + Math.PI * 1.4, alpha: 0, duration: 260, ease: 'Quad.easeOut', onComplete: () => s.setVisible(false) });
   }
 
-  // Расширяющееся кольцо (нова).
+  // Расширяющееся кольцо (нова) — два кольца + вспышка-ядро + искры.
   private novaRing(x: number, y: number, r: number, color: number): void {
-    const ring = this.add.circle(x, y, 10, color, 0).setStrokeStyle(6, color, 0.85).setDepth(8);
-    this.tweens.add({ targets: ring, radius: r, alpha: 0, duration: 320, ease: 'Quad.easeOut', onUpdate: () => ring.setStrokeStyle(6, color, ring.alpha), onComplete: () => ring.destroy() });
-    this.fxCircle(x, y, r * 0.7, color, 0.22);
+    // яркая вспышка в центре
+    const flash = this.add.circle(x, y, r * 0.28, 0xffffff, 0.85).setDepth(8);
+    this.tweens.add({ targets: flash, scale: 0.2, alpha: 0, duration: 200, onComplete: () => flash.destroy() });
+    // внешнее кольцо
+    const ring = this.add.circle(x, y, 12, color, 0).setStrokeStyle(7, color, 0.9).setDepth(8);
+    this.tweens.add({ targets: ring, radius: r, alpha: 0, duration: 340, ease: 'Cubic.easeOut', onUpdate: () => ring.setStrokeStyle(7, color, ring.alpha), onComplete: () => ring.destroy() });
+    // внутреннее кольцо (тоньше, быстрее)
+    const ring2 = this.add.circle(x, y, 8, 0xffffff, 0).setStrokeStyle(3, 0xffffff, 0.7).setDepth(9);
+    this.tweens.add({ targets: ring2, radius: r * 0.7, alpha: 0, duration: 260, ease: 'Cubic.easeOut', onUpdate: () => ring2.setStrokeStyle(3, 0xffffff, ring2.alpha), onComplete: () => ring2.destroy() });
+    this.fxCircle(x, y, r * 0.62, color, 0.2);
+    this.sparks(x, y, color, Math.min(14, Math.round(r / 26)), r * 0.9);
+  }
+
+  // Искры-частицы, разлетающиеся из точки (переиспользуемый пул fx-кругов).
+  private sparks(x: number, y: number, color: number, count: number, reach: number): void {
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + Math.random() * 0.4;
+      const d = reach * (0.5 + Math.random() * 0.5);
+      const s = this.add.circle(x, y, 3 + Math.random() * 2, color, 0.95).setDepth(9);
+      this.tweens.add({
+        targets: s,
+        x: x + Math.cos(a) * d,
+        y: y + Math.sin(a) * d,
+        scale: 0,
+        alpha: 0,
+        duration: 280 + Math.random() * 160,
+        ease: 'Cubic.easeOut',
+        onComplete: () => s.destroy(),
+      });
+    }
   }
 
   // Фронтальный конус (дыхание/волна).
