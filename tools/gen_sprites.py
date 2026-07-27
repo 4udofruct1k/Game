@@ -973,101 +973,125 @@ RACE_CFG = {
 # Герой: пафосный силуэт — плащ, V-торс (широкие плечи), наплечники,
 # небольшая обрамлённая голова, героическая стойка. Голова/торс на якорях
 # (голова y~0.22, плечи y~0.36, талия y~0.62) — совпадают с бронёй-оверлеями.
+def _row(*segs):
+    r = ''.join(ch * c for ch, c in segs)
+    return (r[:18]).ljust(18, '.')
+
+# Головные уборы по типу (строки 0..6, ширина 18). 'h'=убор,'H'=тень,'s'=кожа,'o'=контур,'g'=свечение/рог.
+def _head(kind):
+    if kind == 'hood':
+        return [_row(('.',7),('o',4),('.',7)),
+                _row(('.',6),('o',1),('h',4),('o',1),('.',6)),
+                _row(('.',5),('o',1),('h',6),('o',1),('.',5)),
+                _row(('.',4),('o',1),('h',8),('o',1),('.',4)),
+                _row(('.',4),('o',1),('h',1),('s',6),('h',1),('o',1),('.',4)),
+                _row(('.',3),('o',1),('h',1),('s',8),('h',1),('o',1),('.',3)),
+                _row(('.',3),('o',1),('h',1),('s',8),('h',1),('o',1),('.',3))]
+    if kind == 'ears':
+        return [_row(('.',3),('o',1),('h',1),('o',1),('.',4),('o',1),('h',1),('o',1),('.',3)),
+                _row(('.',3),('o',1),('h',2),('o',1),('.',2),('o',1),('h',2),('o',1),('.',3)),
+                _row(('.',4),('o',1),('h',8),('o',1),('.',4)),
+                _row(('.',4),('o',1),('H',8),('o',1),('.',4)),
+                _row(('.',4),('o',1),('h',1),('s',6),('h',1),('o',1),('.',4)),
+                _row(('.',3),('o',1),('s',10),('o',1),('.',3)),
+                _row(('.',3),('o',1),('s',10),('o',1),('.',3))]
+    if kind == 'helm':  # крылатый шлем
+        return [_row(('.',7),('o',4),('.',7)),
+                _row(('.',5),('o',1),('h',6),('o',1),('.',5)),
+                _row(('.',3),('o',1),('h',1),('H',1),('h',6),('H',1),('h',1),('o',1),('.',3)),
+                _row(('.',2),('o',1),('w',1),('o',1),('h',8),('o',1),('w',1),('o',1),('.',2)),
+                _row(('.',3),('o',1),('h',8),('o',1),('.',4)),
+                _row(('.',3),('o',1),('s',10),('o',1),('.',3)),
+                _row(('.',3),('o',1),('s',10),('o',1),('.',3))]
+    if kind == 'horns':
+        return [_row(('.',2),('g',2),('.',10),('g',2),('.',2)),
+                _row(('.',3),('g',2),('o',1),('.',6),('o',1),('g',2),('.',3)),
+                _row(('.',4),('o',1),('h',8),('o',1),('.',4)),
+                _row(('.',4),('o',1),('H',8),('o',1),('.',4)),
+                _row(('.',4),('o',1),('h',1),('s',6),('h',1),('o',1),('.',4)),
+                _row(('.',3),('o',1),('s',10),('o',1),('.',3)),
+                _row(('.',3),('o',1),('s',10),('o',1),('.',3))]
+    if kind == 'wizard':  # остроконечная шляпа
+        return [_row(('.',8),('o',2),('.',8)),
+                _row(('.',7),('o',1),('h',2),('o',1),('.',7)),
+                _row(('.',6),('o',1),('h',4),('o',1),('.',6)),
+                _row(('.',4),('o',1),('h',8),('o',1),('.',4)),
+                _row(('.',2),('o',1),('t',12),('o',1),('.',2)),
+                _row(('.',3),('o',1),('s',10),('o',1),('.',3)),
+                _row(('.',3),('o',1),('s',10),('o',1),('.',3))]
+    if kind == 'stone':
+        return [_row(('.',5),('o',1),('h',6),('o',1),('.',5)),
+                _row(('.',4),('o',1),('h',8),('o',1),('.',4)),
+                _row(('.',4),('o',1),('h',3),('g',2),('h',3),('o',1),('.',4)),
+                _row(('.',3),('o',1),('h',10),('o',1),('.',3)),
+                _row(('.',3),('o',1),('h',1),('s',8),('h',1),('o',1),('.',3)),
+                _row(('.',3),('o',1),('s',10),('o',1),('.',3)),
+                _row(('.',3),('o',1),('s',10),('o',1),('.',3))]
+    if kind == 'dragon':
+        return [_row(('.',3),('g',2),('o',1),('.',6),('o',1),('g',2),('.',3)),
+                _row(('.',4),('o',1),('h',8),('o',1),('.',4)),
+                _row(('.',4),('o',1),('h',8),('o',1),('.',4)),
+                _row(('.',4),('o',1),('h',1),('s',6),('h',1),('o',1),('.',4)),
+                _row(('.',3),('o',1),('s',10),('o',1),('.',3)),
+                _row(('.',2),('o',1),('s',12),('o',1),('.',2)),
+                _row(('.',2),('o',1),('s',5),('d',2),('s',5),('o',1),('.',2))]
+    return _head('hood')
+
 def f_race(g, cfg, frame):
-    # Стиль Soul Knight: чиби-маскот с характерным головным убором, мантией
-    # с оторочкой, поясом и сапогами. Голова/тело на общих якорях (для брони).
-    n = g.n; cx = n // 2
     body, bsh, blt = cfg['body']
     skin, sksh = cfg['skin']
     trim = cfg.get('trim', blt)
-    feat = cfg['feat']
+    hat = cfg.get('hat', bsh); hsh = dark(hat, 0.72)
     gl = cfg.get('eyeglow')
-    eyecol = gl if gl else (255, 255, 255)
-    hy = n*0.37; hr = n*0.25
-    # --- сапоги (шаг сменой кадра) ---
-    for s2 in (-1, 1):
-        up = (frame == 1) if s2 < 0 else (frame == 0)
-        x = cx + s2*n*0.08
-        by = n*0.92 - (n*0.03 if up else 0)
-        g.rect(x-n*0.06, n*0.84, x+n*0.06, by, (60, 50, 42))
-        g.rect(x-n*0.06, by-n*0.03, x+n*0.06, by, (40, 32, 28))
-    # --- мантия/туника (трапеция вниз) с оторочкой и поясом ---
-    g.tri([(cx-n*0.13, n*0.6), (cx+n*0.13, n*0.6), (cx+n*0.2, n*0.86)], body)
-    g.tri([(cx-n*0.13, n*0.6), (cx+n*0.2, n*0.86), (cx-n*0.2, n*0.86)], body)
-    g.rect(cx-n*0.16, n*0.58, cx+n*0.16, n*0.66, body)          # плечи
-    g.tri([(cx-n*0.13, n*0.6), (cx-n*0.06, n*0.6), (cx-n*0.2, n*0.86)], bsh)   # тень слева
-    g.rect(cx-n*0.2, n*0.84, cx+n*0.2, n*0.87, trim)           # оторочка низа
-    g.rect(cx-n*0.16, n*0.7, cx+n*0.16, n*0.75, mix(body,(0,0,0),0.3))  # пояс
-    g.rect(cx-n*0.03, n*0.7, cx+n*0.03, n*0.75, trim)         # пряжка
-    g.line(cx, n*0.6, cx, n*0.7, trim, 1)                     # передняя планка
-    # ручки
-    g.ellipse(cx-n*0.19, n*0.64, n*0.05, n*0.06, body)
-    g.ellipse(cx+n*0.19, n*0.64, n*0.05, n*0.06, body)
-    g.ellipse(cx-n*0.19, n*0.69, n*0.035, n*0.035, skin)
-    g.ellipse(cx+n*0.19, n*0.69, n*0.035, n*0.035, skin)
-    # --- голова ---
-    g.ellipse(cx, hy, hr, hr, skin)
-    g.ellipse(cx-n*0.1, hy+n*0.08, n*0.11, n*0.09, sksh)      # тень щеки
-    # глаза
-    for s2 in (-1, 1):
-        ex = cx + s2*n*0.1
-        g.ellipse(ex, hy+n*0.03, n*0.06, n*0.08, eyecol)
-        g.ellipse(ex, hy+n*0.05, n*0.034, n*0.045, (34, 28, 40))
-        g.ellipse(ex-n*0.015, hy+n*0.02, n*0.016, n*0.02, (255, 255, 255))
-    g.ellipse(cx, hy+n*0.13, n*0.03, n*0.018, sksh)          # рот
-    # --- головной убор / фишки рас ---
-    hat = cfg.get('hat', bsh)
-    if feat == 'hood':
-        # капюшон-обрамление + острый верх
-        g.ellipse(cx, hy-n*0.03, hr+n*0.03, hr*0.95, hat)
-        g.tri([(cx, hy-hr-n*0.12), (cx-hr, hy+n*0.02), (cx+hr, hy+n*0.02)], hat)
-        g.ellipse(cx, hy+n*0.02, hr-n*0.02, hr-n*0.01, skin)  # лицо в проёме
-        g.rect(cx-hr*0.7, hy-n*0.03, cx+hr*0.7, hy, trim)     # оторочка капюшона
-        # перерисовать глаза/рот поверх
-        for s2 in (-1, 1):
-            ex = cx + s2*n*0.1
-            g.ellipse(ex, hy+n*0.04, n*0.055, n*0.075, eyecol)
-            g.ellipse(ex, hy+n*0.06, n*0.03, n*0.04, (34, 28, 40))
-    elif feat == 'ears':
-        for s2 in (-1, 1):
-            g.tri([(cx+s2*n*0.15, hy-n*0.1), (cx+s2*n*0.27, hy-hr-n*0.04), (cx+s2*n*0.05, hy-n*0.08)], cfg.get('hair', bsh))
-            g.tri([(cx+s2*n*0.15, hy-n*0.1), (cx+s2*n*0.2, hy-hr+n*0.03), (cx+s2*n*0.08, hy-n*0.08)], skin)
-        g.rect(cx-hr, hy-n*0.12, cx+hr, hy-n*0.06, cfg.get('hat', (200,80,70)))  # бандана
-        g.rect(cx-hr, hy-n*0.09, cx+hr, hy-n*0.07, trim)
-    elif feat == 'beard':
-        g.ellipse(cx, hy+n*0.16, hr*0.8, n*0.1, cfg['beard'])
-        # крылатый шлем
-        g.ellipse(cx, hy-n*0.06, hr, hr*0.62, hat)
-        g.rect(cx-hr, hy-n*0.03, cx+hr, hy+n*0.01, mix(hat,(0,0,0),0.25))
-        for s2 in (-1, 1):
-            g.tri([(cx+s2*hr, hy-n*0.04), (cx+s2*(hr+n*0.1), hy-n*0.12), (cx+s2*hr, hy+n*0.02)], (236,236,244))  # крылья
-        g.rect(cx-1.6, hy-n*0.02, cx+1.6, hy+n*0.08, mix(hat,(0,0,0),0.2))  # наносник
-    elif feat == 'horns':
-        g.ellipse(cx, hy-n*0.03, hr+n*0.02, hr*0.9, hat)       # тёмный капюшон
-        g.ellipse(cx, hy+n*0.03, hr-n*0.02, hr-n*0.01, skin)
-        for s2 in (-1, 1):
-            g.tri([(cx+s2*n*0.16, hy-n*0.1), (cx+s2*n*0.27, hy-hr-n*0.1), (cx+s2*n*0.06, hy-n*0.08)], cfg.get('horn', (60,30,30)))
-        for s2 in (-1, 1):  # глаза поверх капюшона
-            ex = cx + s2*n*0.1
-            g.ellipse(ex, hy+n*0.04, n*0.05, n*0.07, eyecol)
-            g.ellipse(ex, hy+n*0.06, n*0.028, n*0.038, (30,20,26))
-    elif feat == 'longears':
-        for s2 in (-1, 1):
-            g.tri([(cx+s2*hr*0.9, hy), (cx+s2*n*0.36, hy-n*0.14), (cx+s2*hr*0.8, hy+n*0.08)], skin)
-        # остроконечная шляпа
-        g.tri([(cx+n*0.02, hy-hr-n*0.18), (cx-hr-n*0.02, hy-n*0.04), (cx+hr+n*0.02, hy-n*0.04)], cfg.get('hat', body))
-        g.rect(cx-hr-n*0.04, hy-n*0.05, cx+hr+n*0.04, hy-n*0.01, trim)   # поля
-        g.ellipse(cx+n*0.02, hy-hr-n*0.16, n*0.03, n*0.03, trim)         # помпон
-    elif feat == 'stone':
-        g.line(cx-n*0.06, hy-n*0.1, cx-n*0.02, hy+n*0.1, cfg.get('eyeglow', (150,220,255)), 1)
-        g.ellipse(cx, hy-hr+n*0.04, n*0.04, n*0.035, cfg.get('eyeglow', (150,220,255)))  # руна-камень на лбу
-        g.ellipse(cx, n*0.66, n*0.04, n*0.05, cfg.get('eyeglow', (150,220,255)))         # ядро в груди
-    elif feat == 'scales':
-        for s2 in (-1, 1):
-            g.tri([(cx+s2*n*0.13, hy-n*0.12), (cx+s2*n*0.22, hy-hr-n*0.02), (cx+s2*n*0.04, hy-n*0.1)], cfg.get('horn', (60,90,50)))
-        g.ellipse(cx, hy+n*0.12, n*0.06, n*0.04, blt)          # морда
-        for yy in (0.64, 0.7):                                 # чешуйки на груди
-            g.rect(cx-n*0.05, n*yy, cx+n*0.05, n*yy+n*0.015, blt)
+    boot = (58, 48, 40)
+    PAL = {
+        'o': (22, 18, 26), 's': skin, 'd': sksh, 'c': body, 'C': bsh, 'l': blt,
+        't': trim, 'h': hat, 'H': hsh, 'b': boot,
+        'e': (gl if gl else (36, 30, 44)), 'w': (lite(gl, 0.5) if gl else (250, 250, 255)),
+        'g': (gl if gl else (230, 210, 90)),
+    }
+    feat = cfg['feat']
+    kind = {'hood': 'hood', 'ears': 'ears', 'beard': 'helm', 'horns': 'horns',
+            'longears': 'wizard', 'stone': 'stone', 'scales': 'dragon'}.get(feat, 'hood')
+    rows = _head(kind)[:]
+    # общая нижняя часть (лицо+тело), строки 7..18
+    rows += [
+        _row(('.',3),('o',1),('h' if kind in ('hood','horns') else 's',1),('s',1),('e',1),('w',1),('s',2),('e',1),('w',1),('s',1),('h' if kind in ('hood','horns') else 's',1),('o',1),('.',3)),
+        _row(('.',3),('o',1),('s',10),('o',1),('.',3)),
+        _row(('.',4),('o',1),('s',8),('o',1),('.',4)),
+        _row(('.',5),('o',1),('d',6),('o',1),('.',5)),
+        _row(('.',3),('o',1),('c',10),('o',1),('.',3)),
+        _row(('.',2),('o',1),('l',1),('c',9),('C',1),('o',1),('.',3)),
+        _row(('.',1),('o',1),('c',1),('C',1),('c',8),('C',1),('c',1),('o',1),('.',3)),
+        _row(('.',1),('o',1),('s',1),('c',10),('s',1),('o',1),('.',3)),
+        _row(('.',1),('o',1),('t',6),('l',2),('t',6),('o',1),('.',1)),
+        _row(('.',1),('o',1),('c',12),('o',1),('.',1)),
+        _row(('.',2),('o',1),('c',10),('o',1),('.',2)),
+        _row(('.',2),('o',1),('t',10),('o',1),('.',2)),
+    ]
+    # ноги (сапоги), кадр меняет смещение
+    if frame == 0:
+        rows += [_row(('.',4),('c',3),('.',4),('c',3),('.',4)),
+                 _row(('.',4),('b',3),('.',4),('b',3),('.',4)),
+                 _row(('.',4),('o',3),('.',4),('o',3),('.',4))]
+    else:
+        rows += [_row(('.',5),('c',3),('.',2),('c',3),('.',5)),
+                 _row(('.',5),('b',3),('.',2),('b',3),('.',5)),
+                 _row(('.',5),('o',3),('.',2),('o',3),('.',5))]
+    # борода дворфа поверх лица
+    if feat == 'beard':
+        rows[8] = _row(('.',3),('o',1),('h',2),('g',6),('h',2),('o',1),('.',3))
+        rows[9] = _row(('.',4),('o',1),('g',8),('o',1),('.',4))
+    # каждый лог.пиксель = блок 2×2, центрируем 36×44 в 48×48
+    bs = 2
+    ox = (g.n - 18 * bs) // 2; oy = (g.n - 22 * bs) // 2
+    for ry, line in enumerate(rows):
+        for rx, chp in enumerate(line):
+            col = PAL.get(chp)
+            if col is not None:
+                for dy in range(bs):
+                    for dx in range(bs):
+                        g.set(ox + rx * bs + dx, oy + ry * bs + dy, col)
 
 # ---- ИКОНКИ ИНТЕРФЕЙСА (рисуем сами, без эмодзи) ----
 def ic_heart(g):
@@ -1152,14 +1176,15 @@ def build_aura():
     img.save(os.path.join(OUT, 'aura.png'))
 
 
-def build_creature(name, fn, pal, kw, n, scale, mirror=True):
+def build_creature(name, fn, pal, kw, n, scale, mirror=True, raw=False):
     random.seed(name)
     g = Grid(n)
     fn(g, pal, **kw)
     if mirror:
         g.mirror_lr()
-    g.shade()
-    g.outline()
+    if not raw:            # raw=True для пиксель-арта (свой контур, без сглаживания)
+        g.shade()
+        g.outline()
     g.render(scale).save(os.path.join(OUT, name + '.png'))
 
 
@@ -1204,9 +1229,9 @@ def main():
         for fr in (0, 1):
             build_creature('hero_%s_%d' % (race, fr),
                            (lambda g, p, cfg=cfg, fr=fr: f_race(g, cfg, fr)),
-                           None, {}, 48, 4, mirror=False)
+                           None, {}, 48, 4, mirror=False, raw=True)
     # запасной 'hero' = человек, кадр 0
-    build_creature('hero', (lambda g, p: f_race(g, RACE_CFG['human'], 0)), None, {}, 48, 4, mirror=False)
+    build_creature('hero', (lambda g, p: f_race(g, RACE_CFG['human'], 0)), None, {}, 48, 4, mirror=False, raw=True)
     build_aura()
     build_flat('slash', p_slash, 48, 4, do_shade=False)  # росчерк удара
     for key, fn in ICONS.items():
