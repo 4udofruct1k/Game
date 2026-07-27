@@ -11,12 +11,17 @@ import { BOSSES_BY_RING, type BossDef } from '../data/bosses';
 import { WEAPON_ARCHETYPES, WEAPON_ITEMS, type WeaponItemDef } from '../data/weapons';
 import { fullHit, weaponAV, type HitInput } from '../core/damage';
 import type { Rarity } from '../data/rarity';
+import { RARITY_NAMES } from '../data/rarity';
+import { RARITY_COLORS } from '../data/theme';
 import { applyElement, vulnMult } from '../core/statusEngine';
 import { grantKillReward } from '../core/economy';
 import { REACTIONS, type Element } from '../data/elements';
 import { CLASS_STATS, CLASS_ABILITIES, CLASS_ABILITY, type AbilityKind } from '../data/classes';
 import { touch, consumeTouch } from '../core/touchInput';
 import { RNG, hashSeed } from '../core/rng';
+import { ARMOR_SLOTS, ARMOR_SLOT_NAMES, CLASS_SETS } from '../data/armor';
+import { nativeWeight, type ArmorPiece } from '../core/stats';
+import { RARITY_ORDER } from '../data/rarity';
 
 // Радиус, за которым мобы (не боссы) деспавнятся и переспавниваются ближе к игроку.
 const CULL_RANGE = 1500;
@@ -70,6 +75,8 @@ export class WorldScene extends Phaser.Scene {
   private bossObj: Boss | null = null;
   // временные турели/миньоны от навыков
   private summons: { x: number; y: number; spr: Phaser.GameObjects.Image; until: number; cd: number; coef: number }[] = [];
+  // наземные дропы брони
+  private armorDrops: { x: number; y: number; piece: ArmorPiece; gfx: Phaser.GameObjects.Container }[] = [];
   // фиксированные точки боссов (по одной на кольцо), всегда на карте
   private bossAnchors: { ring: number; id: string; x: number; y: number }[] = [];
   // декор биомов (чанки вокруг игрока) + сундуки
@@ -336,6 +343,7 @@ export class WorldScene extends Phaser.Scene {
     this.updateTelegraphs(time);
     this.updateProjectilesCleanup();
     this.updatePickups();
+    this.updateArmorPickups();
     this.updateDecorations(dt);
     this.updateChests();
     this.updateSummons(dtMs, time);
@@ -1419,9 +1427,69 @@ export class WorldScene extends Phaser.Scene {
     }
     if (gained > 0) this.onLevelUp(gained);
     this.spawnPickupFx(e.x, e.y, 0xf0c040);
+    this.rollEnemyDrop(e);
     this.enemyGroup.remove(e);
     this.touchCd.delete(e);
     e.kill();
+  }
+
+  // Дроп снаряги/оружия из моба (редко; чаще с элиток и в дальних кольцах).
+  private rollEnemyDrop(e: Enemy): void {
+    const ring = Math.max(1, this.ringOf(Phaser.Math.Distance.Between(e.x, e.y, this.center.x, this.center.y)));
+    const eliteMul = e.isElite ? 3.2 : 1;
+    // редкость дропа растёт с кольцом (+шанс на ступень выше)
+    const bump = Math.random() < 0.22 ? 1 : 0;
+    const rarity = RARITY_ORDER[Phaser.Math.Clamp(ring - 1 + bump, 0, 5)];
+    if (Math.random() < 0.06 * eliteMul) {
+      // оружие
+      const pool = WEAPON_ITEMS.filter((w) => w.rarity === rarity);
+      const weapon = Phaser.Utils.Array.GetRandom(pool.length ? pool : WEAPON_ITEMS);
+      this.spawnWeaponPickup(weapon, ring, e.x, e.y);
+    } else if (Math.random() < 0.1 * eliteMul) {
+      // броня случайного слота
+      const slot = ARMOR_SLOTS[Phaser.Math.Between(0, ARMOR_SLOTS.length - 1)];
+      const classId = this.run.loadout.classId;
+      const setId = CLASS_SETS[classId] ? classId : 'warrior';
+      const piece: ArmorPiece = { setId, slot, rarity, weight: nativeWeight(classId), tier: ring, enchant: 0 };
+      this.spawnArmorPickup(piece, e.x, e.y);
+    }
+  }
+
+  private armorScore(p: ArmorPiece): number {
+    return RARITY_ORDER.indexOf(p.rarity) * 10 + p.tier * 3 + p.enchant;
+  }
+
+  private spawnArmorPickup(piece: ArmorPiece, x: number, y: number): void {
+    const color = RARITY_COLORS[piece.rarity] ?? 0x8fb0e0;
+    const ring = this.add.circle(0, 0, 17, color, 0.85).setStrokeStyle(3, 0xffffff, 0.9);
+    const key = 'armor_' + piece.slot;
+    const icon: Phaser.GameObjects.GameObject = this.textures.exists(key)
+      ? this.add.image(0, 0, key).setScale(0.34).setOrigin(0.5).setTint(color)
+      : this.add.text(0, 0, '⛊', { fontFamily: 'system-ui', fontSize: '15px', color: '#fff' }).setOrigin(0.5);
+    const c = this.add.container(x, y, [ring, icon]).setDepth(9);
+    this.tweens.add({ targets: c, y: y - 6, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
+    this.armorDrops.push({ x, y, piece, gfx: c });
+  }
+
+  private updateArmorPickups(): void {
+    for (let i = this.armorDrops.length - 1; i >= 0; i--) {
+      const d = this.armorDrops[i];
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, d.x, d.y) > 42) continue;
+      const cur = this.run.build.armor[d.piece.slot];
+      const better = !cur || this.armorScore(d.piece) > this.armorScore(cur);
+      if (better) {
+        this.run.equipArmor(d.piece.slot, d.piece);
+        this.player.refreshFromStats();
+        this.flashBanner(`Броня: ${ARMOR_SLOT_NAMES[d.piece.slot]} [${RARITY_NAMES[d.piece.rarity]}]`, 2200);
+      } else {
+        // хуже текущей — продаём за золото
+        this.run.wallet.gold += 15 * (RARITY_ORDER.indexOf(d.piece.rarity) + 1);
+        this.flashBanner('Броня продана (+золото)', 1400);
+      }
+      this.tweens.killTweensOf(d.gfx);
+      d.gfx.destroy();
+      this.armorDrops.splice(i, 1);
+    }
   }
 
   // Убрать моба без награды (отсев по дальности).
@@ -1483,8 +1551,10 @@ export class WorldScene extends Phaser.Scene {
     const color = ELEMENT_COLORS[weapon.element] ?? 0xf0c040;
     const ring2 = this.add.circle(0, 0, 18, color, 0.85).setStrokeStyle(3, 0xffffff, 0.9);
     const key = 'wpn_' + weapon.archetype;
+    // тинт по стихии оружия — разные виды выглядят по-разному
+    const eTint = weapon.element !== 'none' ? (ELEMENT_COLORS[weapon.element] ?? 0xffffff) : 0xffffff;
     const icon: Phaser.GameObjects.GameObject = this.textures.exists(key)
-      ? this.add.image(0, 0, key).setScale(0.42).setOrigin(0.5)
+      ? this.add.image(0, 0, key).setScale(0.42).setOrigin(0.5).setTint(eTint)
       : this.add.text(0, 0, '⚔', { fontFamily: 'system-ui', fontSize: '16px', color: '#fff' }).setOrigin(0.5);
     const c = this.add.container(x, y, [ring2, icon]).setDepth(9);
     this.tweens.add({ targets: c, y: y - 6, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut' });

@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { rollStart, randomSeedText, type StartLoadout } from '../core/startRoll';
 import { Run, setCurrentRun } from '../core/run';
 import { computeLevelCap } from '../core/progression';
-import { RARITY_COLORS } from '../data/theme';
+import { RARITY_COLORS, ELEMENT_COLORS } from '../data/theme';
 import { RARITY_NAMES, RARITY_MULT, CLASS_POWER_MULT } from '../data/rarity';
 import { ELEMENT_NAMES } from '../data/elements';
 import { CLASS_STATS, CLASS_ABILITIES, CLASS_EVOLUTIONS } from '../data/classes';
@@ -186,7 +186,7 @@ export class StartRollScene extends Phaser.Scene {
       case 2: {
         put(`${l.weapon.name} [${RARITY_NAMES[l.weapon.rarity]}]`, l.weapon.rarity);
         const wk = 'wpn_' + l.weapon.archetype;
-        if (this.textures.exists(wk)) this.weaponIcon.setTexture(wk).setVisible(true);
+        if (this.textures.exists(wk)) this.weaponIcon.setTexture(wk).setVisible(true).setTint(l.weapon.element !== 'none' ? (ELEMENT_COLORS[l.weapon.element] ?? 0xffffff) : 0xffffff);
         break;
       }
       case 3: put(l.element === 'none' ? 'нет' : ELEMENT_NAMES[l.element]); break;
@@ -219,7 +219,7 @@ export class StartRollScene extends Phaser.Scene {
     set(1, ab?.skill ?? l.abilitySkill);
     set(2, `${l.weapon.name} [${RARITY_NAMES[l.weapon.rarity]}]`, l.weapon.rarity);
     const wk = 'wpn_' + l.weapon.archetype;
-    if (this.textures.exists(wk)) this.weaponIcon.setTexture(wk).setVisible(!spinning);
+    if (this.textures.exists(wk)) this.weaponIcon.setTexture(wk).setVisible(!spinning).setTint(l.weapon.element !== 'none' ? (ELEMENT_COLORS[l.weapon.element] ?? 0xffffff) : 0xffffff);
     set(3, l.element === 'none' ? 'нет' : ELEMENT_NAMES[l.element]);
     set(4, `${l.blessing.name} [${RARITY_NAMES[l.blessing.rarity]}]`, l.blessing.rarity);
     set(5, l.curse ? `${l.curse.name} [${RARITY_NAMES[l.curse.rarity]}]` : '—', l.curse?.rarity);
