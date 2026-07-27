@@ -9,7 +9,7 @@ import { CLASS_STATS, CLASS_ABILITIES, CLASS_EVOLUTIONS } from '../data/classes'
 import { WEAPON_ARCHETYPES } from '../data/weapons';
 import { listWorlds, listRecords, deleteWorld } from '../core/save';
 import { BASE_W } from '../data/balance';
-import { centerUICamera, addFullscreenButton, requestFullscreenOnFirstTap } from '../ui/layout';
+import { centerUICamera, addFullscreenButton, requestFullscreenOnFirstTap, styledButton } from '../ui/layout';
 
 interface Reel {
   items: Phaser.GameObjects.Text[];
@@ -98,14 +98,23 @@ export class StartRollScene extends Phaser.Scene {
     }
     // линия выигрыша (центр)
     this.add.rectangle(fx, cy, fw, 2, 0xf0c040, 0.35).setOrigin(0, 0.5);
-    // рычаг — крепится к правому боку корпуса (кронштейн + ось), ручка сверху
-    const lx = fx + fw + 6, ly = cy + 40;
-    this.add.rectangle(lx - 8, ly - 18, 26, 36, 0x2a1c2e).setOrigin(0, 0).setStrokeStyle(2, 0xf0c040, 0.9); // кронштейн на корпусе
-    this.add.circle(lx + 5, ly, 6, 0x5a3a2a).setStrokeStyle(2, 0x2a1c2e); // ось
-    const rod = this.add.rectangle(0, 0, 11, 96, 0x8a5a3a).setStrokeStyle(2, 0x5a3a2a).setOrigin(0.5, 1);
-    const knob = this.add.circle(0, -96, 15, 0xd83a3a).setStrokeStyle(2, 0xffe0a0, 0.8);
-    this.lever = this.add.container(lx + 5, ly, [rod, knob]);
+    // рычаг: смотрит на игрока (шар-ручка) и ходит вертикально в прорези на боку
+    const lx = fx + fw + 22;
+    this.leverTop = cy - 58;
+    this.leverBot = cy + 58;
+    // кронштейн, крепящий прорезь к корпусу
+    this.add.rectangle(fx + fw + 2, cy, 26, 44, 0x2a1c2e).setStrokeStyle(2, 0xf0c040, 0.9);
+    // вертикальная прорезь-направляющая
+    this.add.rectangle(lx, cy, 16, 150, 0x140f16).setStrokeStyle(2, 0x6a5a2a, 0.9);
+    // шар-ручка (смотрит на игрока): тень + тело + блик
+    const shadow = this.add.circle(0, 4, 17, 0x000000, 0.35);
+    const ball = this.add.circle(0, 0, 17, 0xd83a3a).setStrokeStyle(2, 0x7a1a1a);
+    const hi = this.add.circle(-6, -6, 7, 0xff9a86, 0.9);
+    this.lever = this.add.container(lx, this.leverTop, [shadow, ball, hi]);
   }
+
+  private leverTop = 0;
+  private leverBot = 0;
 
   private lever!: Phaser.GameObjects.Container;
 
@@ -170,16 +179,7 @@ export class StartRollScene extends Phaser.Scene {
     w = 148,
     h = 50,
   ): Phaser.GameObjects.Container {
-    const bg = this.add.rectangle(0, 0, w, h, color).setStrokeStyle(2, 0x6a6a9a);
-    const txt = this.add
-      .text(0, 0, label, { fontFamily: 'system-ui', fontSize: '16px', color: '#ffffff', fontStyle: 'bold' })
-      .setOrigin(0.5);
-    const c = this.add.container(x + w / 2, y + h / 2, [bg, txt]);
-    c.setSize(w, h).setInteractive({ useHandCursor: true });
-    c.on('pointerover', () => bg.setFillStyle(Phaser.Display.Color.IntegerToColor(color).lighten(15).color));
-    c.on('pointerout', () => bg.setFillStyle(color));
-    c.on('pointerdown', cb);
-    return c;
+    return styledButton(this, x + w / 2, y + h / 2, w, h, label, color, cb);
   }
 
   private spin(): void {
@@ -224,12 +224,13 @@ export class StartRollScene extends Phaser.Scene {
     });
   }
 
-  // Рычаг слот-машины: дёргается вниз при спине.
+  // Рычаг: дёргается вниз (в вертикальной прорези) и возвращается вверх.
   private pullLever(): void {
     if (!this.lever) return;
     this.tweens.killTweensOf(this.lever);
-    this.lever.setAngle(-20);
-    this.tweens.add({ targets: this.lever, angle: 20, duration: 160, yoyo: true, ease: 'Quad.easeOut' });
+    this.lever.y = this.leverTop;
+    this.tweens.add({ targets: this.lever, y: this.leverBot, duration: 180, ease: 'Quad.easeIn',
+      yoyo: true, hold: 60, onComplete: () => { this.lever.y = this.leverTop; } });
   }
 
   private renderLoadout(spinning = false): void {
