@@ -11,12 +11,21 @@ import { listWorlds, listRecords, deleteWorld } from '../core/save';
 import { BASE_W } from '../data/balance';
 import { centerUICamera, addFullscreenButton, requestFullscreenOnFirstTap } from '../ui/layout';
 
+interface Reel {
+  items: Phaser.GameObjects.Text[];
+  cy: number;
+  itemH: number;
+  winH: number;
+  strip: Phaser.GameObjects.Container;
+}
+
 export class StartRollScene extends Phaser.Scene {
   private current!: StartLoadout;
   private seedText = '';
-  private panelTexts: Phaser.GameObjects.Text[] = [];
   private descText!: Phaser.GameObjects.Text;
   private spinning = false;
+  private reels: Reel[] = [];
+  private readonly reelLabels = ['Класс', 'Способность', 'Оружие', 'Стихия', 'Благо', 'Раса'];
 
   constructor() {
     super('StartRoll');
@@ -42,7 +51,7 @@ export class StartRollScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.buildRollPanel();
+    this.buildSlotMachine();
     this.buildButtons();
     this.buildDescriptionPanel();
     this.buildWorldsRecords();
@@ -56,60 +65,90 @@ export class StartRollScene extends Phaser.Scene {
     requestFullscreenOnFirstTap(this);
   }
 
-  private labels = [
-    'Класс',
-    'Способность',
-    'Оружие',
-    'Стихия',
-    'Благословение',
-    'Проклятие',
-    'Реликвия',
-    'Раса',
-    'Кап уровня',
-  ];
-
-  private buildRollPanel(): void {
-    const x = 60;
-    const y0 = 110;
-    const rowH = 34;
-    this.add.rectangle(x - 20, y0 - 16, 450, rowH * this.labels.length + 24, 0x141420).setOrigin(0, 0);
-    this.labels.forEach((lab, i) => {
-      this.add.text(x, y0 + i * rowH, lab, {
-        fontFamily: 'system-ui',
-        fontSize: '14px',
-        color: '#9a9ab0',
-      });
-      const val = this.add.text(x + 150, y0 + i * rowH, '—', {
-        fontFamily: 'system-ui',
-        fontSize: '15px',
-        color: '#e8e8f0',
-        fontStyle: 'bold',
-      });
-      this.panelTexts.push(val);
-    });
-    // иконка оружия у строки «Оружие» (индекс 2)
-    this.weaponIcon = this.add.image(x + 400, y0 + 2 * rowH + 8, 'wpn_sword').setScale(0.22).setOrigin(0.5);
-    // рычаг слот-машины справа от панели (дёргается при спине)
-    const lx = x - 20 + 450 + 24;
-    const ly = y0 + 24;
-    this.add.circle(lx, ly, 9, 0x3a2a20); // корпус крепления
-    const rod = this.add.rectangle(0, 0, 10, 74, 0x8a5a3a).setStrokeStyle(2, 0x5a3a2a).setOrigin(0.5, 0);
-    const knob = this.add.circle(0, 78, 14, 0xd83a3a).setStrokeStyle(2, 0xffe0a0, 0.7);
+  // Слот-машина: горизонтальный корпус с вертикальными барабанами + рычаг.
+  private buildSlotMachine(): void {
+    const fx = 92, fy = 92, fw = 812, fh = 192;
+    // корпус машины
+    this.add.rectangle(fx - 6, fy - 6, fw + 12, fh + 12, 0x2a1c2e).setOrigin(0, 0).setStrokeStyle(3, 0xf0c040, 0.9);
+    this.add.rectangle(fx, fy, fw, fh, 0x101018).setOrigin(0, 0);
+    const cols = this.reelLabels.length;
+    const pad = 8;
+    const reelW = (fw - pad * 2) / cols;
+    const innerW = reelW - 8;
+    const winH = fh - 16;
+    const cy = fy + fh / 2;
+    const itemH = winH / 3;
+    for (let i = 0; i < cols; i++) {
+      const cx = fx + pad + i * reelW + reelW / 2;
+      // окно барабана
+      this.add.rectangle(cx, cy, innerW, winH, i % 2 ? 0x191922 : 0x14141d).setStrokeStyle(1, 0x3a3a52);
+      const items: Phaser.GameObjects.Text[] = [];
+      const strip = this.add.container(cx, 0);
+      for (let k = 0; k < 11; k++) {
+        const t = this.add.text(0, k * itemH, '', {
+          fontFamily: 'system-ui', fontSize: '13px', color: '#e8e8f0', fontStyle: 'bold',
+          align: 'center', wordWrap: { width: innerW - 6 },
+        }).setOrigin(0.5);
+        items.push(t);
+        strip.add(t);
+      }
+      this.reels.push({ items, cy, itemH, winH, strip });
+      // подпись барабана
+      this.add.text(cx, fy + fh + 6, this.reelLabels[i], { fontFamily: 'system-ui', fontSize: '12px', color: '#9a9ab0' }).setOrigin(0.5, 0);
+    }
+    // линия выигрыша (центр)
+    this.add.rectangle(fx, cy, fw, 2, 0xf0c040, 0.35).setOrigin(0, 0.5);
+    // рычаг справа
+    const lx = fx + fw + 30, ly = fy + 6;
+    this.add.circle(lx, ly, 10, 0x3a2a20);
+    const rod = this.add.rectangle(0, 0, 12, 92, 0x8a5a3a).setStrokeStyle(2, 0x5a3a2a).setOrigin(0.5, 0);
+    const knob = this.add.circle(0, 96, 16, 0xd83a3a).setStrokeStyle(2, 0xffe0a0, 0.7);
     this.lever = this.add.container(lx, ly, [rod, knob]);
   }
 
-  private weaponIcon!: Phaser.GameObjects.Image;
   private lever!: Phaser.GameObjects.Container;
 
+  // Значение барабана i из лоадаута: текст + цвет по редкости.
+  private reelValue(l: StartLoadout, i: number): { text: string; color: string } {
+    const rc = (r: keyof typeof RARITY_COLORS) => '#' + RARITY_COLORS[r].toString(16).padStart(6, '0');
+    switch (i) {
+      case 0: return { text: CLASS_STATS[l.classId].name, color: rc(l.classRarity) };
+      case 1: return { text: CLASS_ABILITIES[l.classId]?.skill ?? l.abilitySkill, color: '#dfe0ee' };
+      case 2: return { text: l.weapon.name, color: rc(l.weapon.rarity) };
+      case 3: return { text: l.element === 'none' ? 'нет' : ELEMENT_NAMES[l.element], color: l.element === 'none' ? '#888' : (ELEMENT_COLORS[l.element] ? '#' + ELEMENT_COLORS[l.element].toString(16).padStart(6, '0') : '#dfe0ee') };
+      case 4: return { text: l.blessing.name, color: rc(l.blessing.rarity) };
+      case 5: return { text: l.race.name, color: rc(l.race.rarity) };
+      default: return { text: '', color: '#fff' };
+    }
+  }
+
+  // Поставить барабан статично на итоговое значение (центр).
+  private setReelStatic(i: number, l: StartLoadout): void {
+    const r = this.reels[i];
+    const v = this.reelValue(l, i);
+    const kc = 5;
+    r.items.forEach((t, k) => t.setText(k === kc ? v.text : '').setColor(v.color));
+    r.strip.y = r.cy - kc * r.itemH;
+    this.clipReel(r);
+  }
+
+  // Прячем элементы вне окна барабана (замена маске — она сбивается камерой).
+  private clipReel(r: Reel): void {
+    for (let k = 0; k < r.items.length; k++) {
+      const worldY = r.strip.y + k * r.itemH;
+      r.items[k].setVisible(Math.abs(worldY - r.cy) <= r.winH / 2 + 2);
+    }
+  }
+
   private buildButtons(): void {
-    const y = 110 + 34 * this.labels.length + 16;
-    this.makeButton(40, y, 'КРУТИТЬ 🎰', 0x394b8a, () => this.spin());
-    this.makeButton(196, y, 'НОВЫЙ СИД', 0x2a2a3f, () => {
+    const y = 312;
+    this.makeButton(92, y, 'КРУТИТЬ 🎰', 0x394b8a, () => this.spin());
+    this.makeButton(258, y, 'НОВЫЙ СИД', 0x2a2a3f, () => {
       this.seedText = randomSeedText();
       this.current = rollStart(this.seedText);
       this.renderLoadout();
     });
-    this.makeButton(352, y, 'В МИР ▶', 0x2f7a3a, () => this.startWorld());
+    this.makeButton(424, y, 'В МИР ▶', 0x2f7a3a, () => this.startWorld());
   }
 
   private makeButton(
@@ -136,66 +175,43 @@ export class StartRollScene extends Phaser.Scene {
   private spin(): void {
     if (this.spinning) return;
     this.spinning = true;
-    // слот-машина: катушки крутятся и фиксируются сверху вниз по очереди
     this.seedText = randomSeedText();
     const final = rollStart(this.seedText);
-    const rows = this.labels.length;
-    const locked = new Array<boolean>(rows).fill(false);
-    let elapsed = 0;
     this.pullLever();
     this.updateDescription(true);
-    const ev = this.time.addEvent({
-      delay: 45,
-      loop: true,
-      callback: () => {
-        elapsed += 45;
-        for (let i = 0; i < rows; i++) {
-          if (!locked[i] && elapsed >= 420 + i * 120) {
-            locked[i] = true;
-            this.setRow(i, final);
-            const t = this.panelTexts[i];
-            t.setAlpha(0.3);
-            this.tweens.add({ targets: t, alpha: 1, duration: 220, ease: 'Quad.easeOut' });
+    let stopped = 0;
+    const total = this.reels.length;
+    this.reels.forEach((r, i) => {
+      // барабан крутится сверху вниз; последний элемент = итог, лендинг по центру
+      const N = r.items.length;
+      const kc = N - 1;
+      r.items.forEach((t, k) => {
+        const v = this.reelValue(k === kc ? final : rollStart(randomSeedText()), i);
+        t.setText(v.text).setColor(v.color).setAlpha(1);
+      });
+      r.strip.y = r.cy; // показываем item 0 сверху
+      this.tweens.add({
+        targets: r.strip,
+        y: r.cy - kc * r.itemH, // прокрутка до итога
+        duration: 900 + i * 260,
+        ease: 'Cubic.easeOut',
+        onUpdate: () => this.clipReel(r),
+        onComplete: () => {
+          // мигание фиксации
+          const it = r.items[kc];
+          it.setAlpha(0.35);
+          this.tweens.add({ targets: it, alpha: 1, duration: 200 });
+          stopped++;
+          if (stopped >= total) {
+            this.current = final;
+            // проставить статично (кадр-в-кадр) и показать описание
+            for (let j = 0; j < total; j++) this.setReelStatic(j, final);
+            this.updateDescription(false);
+            this.spinning = false;
           }
-        }
-        // крутящиеся строки показывают случайные значения
-        const rnd = rollStart(randomSeedText());
-        for (let i = 0; i < rows; i++) if (!locked[i]) this.setRow(i, rnd);
-        if (locked.every(Boolean)) {
-          ev.remove();
-          this.current = final;
-          this.renderLoadout(false);
-          this.spinning = false;
-        }
-      },
+        },
+      });
     });
-  }
-
-  // Обновить одну строку панели из лоадаута (для катушек слот-машины).
-  private setRow(i: number, l: StartLoadout): void {
-    const cls = CLASS_STATS[l.classId];
-    const ab = CLASS_ABILITIES[l.classId];
-    const put = (text: string, rarity?: keyof typeof RARITY_COLORS) => {
-      const t = this.panelTexts[i];
-      t.setText(text);
-      t.setColor(rarity ? '#' + RARITY_COLORS[rarity].toString(16).padStart(6, '0') : '#e8e8f0');
-    };
-    switch (i) {
-      case 0: put(`${cls.name} [${RARITY_NAMES[l.classRarity]}]`, l.classRarity); break;
-      case 1: put(ab?.skill ?? l.abilitySkill); break;
-      case 2: {
-        put(`${l.weapon.name} [${RARITY_NAMES[l.weapon.rarity]}]`, l.weapon.rarity);
-        const wk = 'wpn_' + l.weapon.archetype;
-        if (this.textures.exists(wk)) this.weaponIcon.setTexture(wk).setVisible(true).setTint(l.weapon.element !== 'none' ? (ELEMENT_COLORS[l.weapon.element] ?? 0xffffff) : 0xffffff);
-        break;
-      }
-      case 3: put(l.element === 'none' ? 'нет' : ELEMENT_NAMES[l.element]); break;
-      case 4: put(`${l.blessing.name} [${RARITY_NAMES[l.blessing.rarity]}]`, l.blessing.rarity); break;
-      case 5: put(l.curse ? `${l.curse.name} [${RARITY_NAMES[l.curse.rarity]}]` : '—', l.curse?.rarity); break;
-      case 6: put(l.relic ? `${l.relic.name} [${RARITY_NAMES[l.relic.rarity]}]` : '—', l.relic?.rarity); break;
-      case 7: put(`${l.race.name} [${RARITY_NAMES[l.race.rarity]}]`, l.race.rarity); break;
-      case 8: put(`${computeLevelCap(l)} (сид: ${l.seedText})`); break;
-    }
   }
 
   // Рычаг слот-машины: дёргается вниз при спине.
@@ -207,34 +223,16 @@ export class StartRollScene extends Phaser.Scene {
   }
 
   private renderLoadout(spinning = false): void {
-    const l = this.current;
-    const cls = CLASS_STATS[l.classId];
-    const ab = CLASS_ABILITIES[l.classId];
-    const set = (i: number, text: string, rarity?: keyof typeof RARITY_COLORS) => {
-      const t = this.panelTexts[i];
-      t.setText(text);
-      t.setColor(rarity ? '#' + RARITY_COLORS[rarity].toString(16).padStart(6, '0') : '#e8e8f0');
-    };
-    set(0, `${cls.name} [${RARITY_NAMES[l.classRarity]}]`, l.classRarity);
-    set(1, ab?.skill ?? l.abilitySkill);
-    set(2, `${l.weapon.name} [${RARITY_NAMES[l.weapon.rarity]}]`, l.weapon.rarity);
-    const wk = 'wpn_' + l.weapon.archetype;
-    if (this.textures.exists(wk)) this.weaponIcon.setTexture(wk).setVisible(!spinning).setTint(l.weapon.element !== 'none' ? (ELEMENT_COLORS[l.weapon.element] ?? 0xffffff) : 0xffffff);
-    set(3, l.element === 'none' ? 'нет' : ELEMENT_NAMES[l.element]);
-    set(4, `${l.blessing.name} [${RARITY_NAMES[l.blessing.rarity]}]`, l.blessing.rarity);
-    set(5, l.curse ? `${l.curse.name} [${RARITY_NAMES[l.curse.rarity]}]` : '—', l.curse?.rarity);
-    set(6, l.relic ? `${l.relic.name} [${RARITY_NAMES[l.relic.rarity]}]` : '—', l.relic?.rarity);
-    set(7, `${l.race.name} [${RARITY_NAMES[l.race.rarity]}]`, l.race.rarity);
-    set(8, spinning ? '??' : `${computeLevelCap(l)} (сид: ${l.seedText})`);
+    for (let i = 0; i < this.reels.length; i++) this.setReelStatic(i, this.current);
     this.updateDescription(spinning);
   }
 
   // Панель справа: подробное описание того, что выпало.
   private buildDescriptionPanel(): void {
-    const x = 512;
-    const y = 104;
-    const w = 424;
-    const h = 392;
+    const x = 40;
+    const y = 372;
+    const w = 590;
+    const h = 250;
     this.add.rectangle(x, y, w, h, 0x141420).setOrigin(0, 0).setStrokeStyle(1, 0x2a2a3f);
     this.add.text(x + 14, y + 10, 'ЧТО ВЫПАЛО', { fontFamily: 'system-ui', fontSize: '15px', color: '#f0c040' });
     this.descText = this.add.text(x + 14, y + 36, '', {
@@ -310,20 +308,21 @@ export class StartRollScene extends Phaser.Scene {
     this.descText.setText(L.join('\n'));
   }
 
-  // Продолжить миры + рекорды (компактно, снизу).
+  // Продолжить миры + рекорды (правая колонка).
   private buildWorldsRecords(): void {
-    const yTop = 508;
+    const cx = 656;
+    const yTop = 372;
     // миры
-    this.add.text(46, yTop, 'ПРОДОЛЖИТЬ МИР', { fontFamily: 'system-ui', fontSize: '14px', color: '#f0c040' });
+    this.add.text(cx, yTop, 'ПРОДОЛЖИТЬ МИР', { fontFamily: 'system-ui', fontSize: '14px', color: '#f0c040' });
     const worlds = listWorlds().slice(0, 4);
     if (worlds.length === 0) {
-      this.add.text(46, yTop + 22, 'нет сохранённых миров', { fontFamily: 'system-ui', fontSize: '12px', color: '#666' });
+      this.add.text(cx, yTop + 22, 'нет сохранённых миров', { fontFamily: 'system-ui', fontSize: '12px', color: '#666' });
     }
     worlds.forEach((w, i) => {
       const y = yTop + 22 + i * 26;
       const label = `${CLASS_STATS[w.classId]?.name ?? w.classId} ур.${w.level} ${w.dead ? '☠' : ''}`;
       const t = this.add
-        .text(46, y, label, { fontFamily: 'system-ui', fontSize: '13px', color: w.dead ? '#a05555' : '#8fd08f', backgroundColor: '#1a1a28', padding: { x: 6, y: 3 } })
+        .text(cx, y, label, { fontFamily: 'system-ui', fontSize: '13px', color: w.dead ? '#a05555' : '#8fd08f', backgroundColor: '#1a1a28', padding: { x: 6, y: 3 } })
         .setInteractive({ useHandCursor: true });
       t.on('pointerdown', () => {
         if (w.dead) {
@@ -339,19 +338,20 @@ export class StartRollScene extends Phaser.Scene {
       });
     });
 
-    // рекорды
-    this.add.text(500, yTop, 'РЕКОРДЫ', { fontFamily: 'system-ui', fontSize: '14px', color: '#f0c040' });
+    // рекорды (ниже миров в той же колонке)
+    const recY = yTop + 22 + 4 * 26 + 14;
+    this.add.text(cx, recY, 'РЕКОРДЫ', { fontFamily: 'system-ui', fontSize: '14px', color: '#f0c040' });
     const recs = listRecords().slice(0, 4);
     if (recs.length === 0) {
-      this.add.text(500, yTop + 22, 'ещё нет клиров', { fontFamily: 'system-ui', fontSize: '12px', color: '#666' });
+      this.add.text(cx, recY + 22, 'ещё нет клиров', { fontFamily: 'system-ui', fontSize: '12px', color: '#666' });
     }
     recs.forEach((r, i) => {
-      const y = yTop + 22 + i * 24;
+      const y = recY + 22 + i * 24;
       const mins = Math.floor(r.timeMs / 60000);
       const secs = Math.floor((r.timeMs % 60000) / 1000);
       const status = r.victory ? '🏆' : '☠';
       this.add.text(
-        500,
+        cx,
         y,
         `${status} ${CLASS_STATS[r.classId]?.name ?? r.classId} · ур.${r.level} · ${mins}:${secs
           .toString()
