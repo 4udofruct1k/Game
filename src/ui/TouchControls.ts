@@ -22,15 +22,16 @@ export class TouchControls {
     this.joyBase = scene.add.circle(0, 0, this.radius, 0xffffff, 0.08).setStrokeStyle(2, 0xffffff, 0.25).setDepth(50).setVisible(false).setScrollFactor(0);
     this.joyThumb = scene.add.circle(0, 0, this.radius * 0.42, 0xffffff, 0.22).setDepth(51).setVisible(false).setScrollFactor(0);
 
-    // Кнопки действий (низ-право) — чистая сетка 2×2, без наложений.
-    this.actionButton(w - 92, h - 96, 56, 'icon_dash', 'Рывок', 0x3a5a8a, () => (touch.dash = true));
-    this.actionButton(w - 214, h - 96, 50, 'icon_skill', 'Навык', 0x2f6a3a, () => (touch.skill = true));
-    this.actionButton(w - 92, h - 228, 50, 'icon_heal', 'Хилка', 0x2f7a5a, () => (touch.heal = true));
-    this.actionButton(w - 214, h - 228, 50, 'icon_ult', 'Ульта', 0x7a3a8a, () => (touch.ult = true));
+    // Кнопки действий (низ-право) — чистая сетка 2×2, единый схематичный стиль.
+    const acc = 0x7a86b6; // общий приглушённый акцент
+    this.actionButton(w - 92, h - 96, 56, 'icon_dash', 'Рывок', acc, () => (touch.dash = true));
+    this.actionButton(w - 214, h - 96, 50, 'icon_skill', 'Навык', acc, () => (touch.skill = true));
+    this.actionButton(w - 92, h - 228, 50, 'icon_heal', 'Хилка', acc, () => (touch.heal = true));
+    this.actionButton(w - 214, h - 228, 50, 'icon_ult', 'Ульта', acc, () => (touch.ult = true));
 
     // Кнопки хаб/меню (верх-право под золотом).
-    this.actionButton(w - 54, 168, 34, 'icon_hub', '', 0x394b8a, () => (touch.hub = true));
-    this.actionButton(w - 54, 248, 34, 'icon_menu', '', 0x2a2a3f, () => (touch.menu = true));
+    this.actionButton(w - 54, 168, 34, 'icon_hub', '', acc, () => (touch.hub = true));
+    this.actionButton(w - 54, 248, 34, 'icon_menu', '', acc, () => (touch.menu = true));
 
     // Обработка джойстика.
     scene.input.on('pointerdown', this.onDown, this);
@@ -39,27 +40,28 @@ export class TouchControls {
     scene.input.on('pointerupoutside', this.onUp, this);
   }
 
-  private actionButton(x: number, y: number, r: number, iconKey: string, label: string, color: number, press: () => void): void {
-    const c = this.scene.add.circle(x, y, r, color, 0.55).setStrokeStyle(3, 0xffffff, 0.35).setDepth(50).setScrollFactor(0);
-    // рисованная иконка (фолбэк на текст-метку, если текстуры нет)
+  // Схематичная кнопка: единый плоский стиль (тёмный круг + тонкая рамка +
+  // белая иконка). Цвет-акцент используется лишь тонким кольцом.
+  private actionButton(x: number, y: number, r: number, iconKey: string, label: string, accent: number, press: () => void): void {
+    const base = 0x1a1e2a;
+    const c = this.scene.add.circle(x, y, r, base, 0.7).setStrokeStyle(2, accent, 0.55).setDepth(50).setScrollFactor(0);
     if (this.scene.textures.exists(iconKey)) {
-      this.scene.add.image(x, y, iconKey).setScale((r * 1.1) / 96).setDepth(51).setScrollFactor(0);
+      this.scene.add.image(x, y, iconKey).setScale((r * 0.95) / 96).setDepth(51).setScrollFactor(0);
     } else {
       this.scene.add.text(x, y, iconKey, { fontFamily: 'system-ui', fontSize: `${Math.round(r * 0.7)}px`, color: '#fff' }).setOrigin(0.5).setDepth(51).setScrollFactor(0);
     }
     if (label) {
-      this.scene.add.text(x, y + r + 2, label, { fontFamily: 'system-ui', fontSize: '13px', color: '#e8ecff', fontStyle: 'bold' }).setOrigin(0.5, 0).setDepth(51).setScrollFactor(0).setShadow(1, 1, '#000', 2);
+      this.scene.add.text(x, y + r + 3, label, { fontFamily: 'system-ui', fontSize: '12px', color: '#c8cce0' }).setOrigin(0.5, 0).setDepth(51).setScrollFactor(0).setShadow(1, 1, '#000', 2);
     }
     c.setInteractive({ useHandCursor: true });
     c.on('pointerdown', (p: Phaser.Input.Pointer) => {
       touch.enabled = true;
       press();
-      c.setFillStyle(color, 0.9);
-      // помечаем этот указатель как «занятый кнопкой», чтобы не стартовал джойстик
+      c.setFillStyle(accent, 0.85);
       (p as Phaser.Input.Pointer & { _btn?: boolean })._btn = true;
     });
-    c.on('pointerup', () => c.setFillStyle(color, 0.55));
-    c.on('pointerout', () => c.setFillStyle(color, 0.55));
+    c.on('pointerup', () => c.setFillStyle(base, 0.7));
+    c.on('pointerout', () => c.setFillStyle(base, 0.7));
   }
 
   private onDown(pointer: Phaser.Input.Pointer): void {
