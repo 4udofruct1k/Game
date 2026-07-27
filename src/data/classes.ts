@@ -96,43 +96,45 @@ export const CLASS_ABILITIES: Record<string, ClassAbilities> = {
   architect: { passive: 'размещает террейн/постройки', skill: 'Возвести стену/ловушку', ult: 'Крепость (+турели)', branches: ['Стройка', 'Ловушки', 'Осада'] },
 };
 
-// Вид действия навыка/ульты — у каждого класса свой (движок диспатчит по виду).
+// Вид действия навыка/ульты — реализует §4 (у каждого класса своя логика).
 export type AbilityKind =
-  | 'whirlwind' | 'nova' | 'rain' | 'meteor' | 'volley' | 'cone'
-  | 'beam' | 'chain' | 'dash' | 'heal' | 'shield' | 'poison'
-  | 'summon' | 'timestop' | 'nuke';
+  | 'whirlwind' | 'nova' | 'rain' | 'meteor' | 'fireball' | 'volley' | 'cone'
+  | 'arc' | 'beam' | 'chain' | 'storm' | 'dash' | 'heal' | 'shield'
+  | 'zone' | 'poison' | 'summon' | 'timestop' | 'void' | 'rune'
+  | 'buff' | 'random' | 'nuke';
 
+// Соответствие §4: Навык / Ульта каждого из 30 классов.
 export const CLASS_ABILITY: Record<string, { skill: AbilityKind; ult: AbilityKind }> = {
-  warrior: { skill: 'whirlwind', ult: 'whirlwind' },
-  ranger: { skill: 'volley', ult: 'rain' },
-  mage: { skill: 'meteor', ult: 'rain' },
-  rogue: { skill: 'dash', ult: 'dash' },
-  priest: { skill: 'heal', ult: 'heal' },
-  barbarian: { skill: 'whirlwind', ult: 'whirlwind' },
-  paladin: { skill: 'heal', ult: 'shield' },
-  pyromancer: { skill: 'cone', ult: 'rain' },
-  cryomancer: { skill: 'nova', ult: 'rain' },
-  assassin: { skill: 'dash', ult: 'nuke' },
-  beastmaster: { skill: 'summon', ult: 'summon' },
-  berserker: { skill: 'whirlwind', ult: 'whirlwind' },
-  necromancer: { skill: 'summon', ult: 'summon' },
-  elementalist: { skill: 'nova', ult: 'nuke' },
-  spellblade: { skill: 'beam', ult: 'beam' },
-  druid: { skill: 'nova', ult: 'summon' },
-  engineer: { skill: 'summon', ult: 'rain' },
-  bloodmage: { skill: 'dash', ult: 'nuke' },
-  monk: { skill: 'dash', ult: 'whirlwind' },
-  chronomancer: { skill: 'timestop', ult: 'timestop' },
-  plague: { skill: 'poison', ult: 'poison' },
-  warlock: { skill: 'beam', ult: 'nuke' },
-  stormcaller: { skill: 'chain', ult: 'chain' },
-  illusionist: { skill: 'summon', ult: 'summon' },
-  dragonborn: { skill: 'cone', ult: 'cone' },
-  runeweaver: { skill: 'meteor', ult: 'nuke' },
-  reaper: { skill: 'cone', ult: 'nuke' },
-  ascended: { skill: 'nova', ult: 'nuke' },
-  puppeteer: { skill: 'summon', ult: 'summon' },
-  architect: { skill: 'summon', ult: 'rain' },
+  warrior: { skill: 'arc', ult: 'whirlwind' },        // Рассекающий удар / Вихрь клинков
+  ranger: { skill: 'volley', ult: 'rain' },           // Мультивыстрел / Ливень стрел
+  mage: { skill: 'fireball', ult: 'meteor' },         // Огненный шар / Метеор
+  rogue: { skill: 'dash', ult: 'whirlwind' },         // Удар в спину / Теневой шквал
+  priest: { skill: 'heal', ult: 'heal' },             // Исцеление / Святилище (хил+щит)
+  barbarian: { skill: 'whirlwind', ult: 'whirlwind' },// Ярость / Кровожадность
+  paladin: { skill: 'zone', ult: 'shield' },          // Освящённая земля / Божественный щит
+  pyromancer: { skill: 'cone', ult: 'rain' },         // Огненная волна / Огненный шторм
+  cryomancer: { skill: 'nova', ult: 'rain' },         // Ледяная нова / Метель
+  assassin: { skill: 'dash', ult: 'nuke' },           // Метка+казнь / Печать смерти
+  beastmaster: { skill: 'summon', ult: 'summon' },    // Приказ зверю / Призыв стаи
+  berserker: { skill: 'whirlwind', ult: 'whirlwind' },// Неистовство / Буйство
+  necromancer: { skill: 'summon', ult: 'summon' },    // Поднять скелета / Армия мёртвых
+  elementalist: { skill: 'nova', ult: 'nuke' },       // Стихийный взрыв / Катаклизм
+  spellblade: { skill: 'arc', ult: 'whirlwind' },     // Зачаровать оружие / Шторм аркан-клинков
+  druid: { skill: 'buff', ult: 'nuke' },              // Смена формы / Форма древнего
+  engineer: { skill: 'summon', ult: 'rain' },         // Турель / Бомбардировка
+  bloodmage: { skill: 'dash', ult: 'nuke' },          // Кровавый удар / Багровый взрыв
+  monk: { skill: 'dash', ult: 'whirlwind' },          // Удар ци / Тысяча кулаков
+  chronomancer: { skill: 'timestop', ult: 'timestop' },// Остановка времени / Откат
+  plague: { skill: 'poison', ult: 'poison' },         // Зараза / Пандемия
+  warlock: { skill: 'beam', ult: 'void' },            // Проклятие / Разлом Пустоты
+  stormcaller: { skill: 'chain', ult: 'storm' },      // Цепная молния / Гроза
+  illusionist: { skill: 'summon', ult: 'summon' },    // Приманка-двойник / Легион отражений
+  dragonborn: { skill: 'cone', ult: 'cone' },         // Драконье дыхание / Форма дракона
+  runeweaver: { skill: 'rune', ult: 'nuke' },         // Начертать руну / Великий рунический круг
+  reaper: { skill: 'arc', ult: 'nuke' },              // Жатва душ / Жнец (казнь)
+  ascended: { skill: 'random', ult: 'nuke' },         // Адаптивный навык / Вознесение
+  puppeteer: { skill: 'summon', ult: 'summon' },      // Доминирование / Порабощение
+  architect: { skill: 'summon', ult: 'shield' },      // Стена/ловушка / Крепость (+турели)
 };
 
 // §33 — эволюция класса от боссов колец 1-3 (кумулятивный множитель к ядру класса).

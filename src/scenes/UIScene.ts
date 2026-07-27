@@ -44,7 +44,7 @@ export class UIScene extends Phaser.Scene {
     panel.lineStyle(2, 0x3a4a6a, 0.8).strokeRoundedRect(12, 12, 360, 108, 12);
 
     // HP
-    this.add.text(24, 20, '❤', { fontFamily: 'system-ui', fontSize: '20px', color: '#ff5a6a' });
+    this.add.image(34, 33, 'icon_hp').setScale(0.42);
     this.add.rectangle(52, 22, 308, 26, COLORS.hpBg).setOrigin(0, 0).setStrokeStyle(1, 0x000000, 0.4);
     this.hpBar = this.add.rectangle(52, 22, 308, 26, COLORS.hp).setOrigin(0, 0);
     this.hpText = this.add.text(206, 25, '', { fontFamily: 'system-ui', fontSize: '15px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5, 0);
@@ -54,13 +54,13 @@ export class UIScene extends Phaser.Scene {
     this.xpBar = this.add.rectangle(52, 54, 0, 12, COLORS.xp).setOrigin(0, 0);
     this.lvlText = this.add.text(56, 55, '', { fontFamily: 'system-ui', fontSize: '11px', color: '#dce8ff', fontStyle: 'bold' });
 
-    // Энергия ⚡
-    this.add.text(24, 72, '⚡', { fontFamily: 'system-ui', fontSize: '15px', color: '#6fe0d0' });
+    // Энергия
+    this.add.image(32, 81, 'icon_energy').setScale(0.34);
     this.add.rectangle(52, 76, 150, 10, 0x1a2a2a).setOrigin(0, 0);
     this.energyBar = this.add.rectangle(52, 76, 150, 10, COLORS.energy).setOrigin(0, 0);
 
-    // Ульта ★
-    this.add.text(212, 72, '★', { fontFamily: 'system-ui', fontSize: '15px', color: '#c9a0e0' });
+    // Ульта
+    this.add.image(220, 81, 'icon_ult').setScale(0.34);
     this.add.rectangle(232, 76, 128, 10, 0x2a1a3a).setOrigin(0, 0);
     this.ultBar = this.add.rectangle(232, 76, 0, 10, COLORS.ult).setOrigin(0, 0);
     this.ultText = this.add.text(52, 92, '', { fontFamily: 'system-ui', fontSize: '11px', color: '#c9a0e0' });
@@ -69,7 +69,7 @@ export class UIScene extends Phaser.Scene {
     const gp = this.add.graphics().setScrollFactor(0);
     gp.fillStyle(0x0e1220, 0.72).fillRoundedRect(w - 150, 12, 138, 34, 10);
     gp.lineStyle(2, 0x6a5a2a, 0.8).strokeRoundedRect(w - 150, 12, 138, 34, 10);
-    this.add.text(w - 138, 18, '⦿', { fontFamily: 'system-ui', fontSize: '20px', color: '#f0c040' });
+    this.add.image(w - 128, 29, 'icon_gold').setScale(0.4);
     this.goldText = this.add.text(w - 20, 20, '', { fontFamily: 'system-ui', fontSize: '18px', color: '#f7d868', fontStyle: 'bold' }).setOrigin(1, 0);
 
     // низ: способности/хилка/очки
