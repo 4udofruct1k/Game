@@ -156,7 +156,7 @@ export class Player extends Phaser.Physics.Arcade.Image {
     }
     this.weaponSpr
       .setPosition(this.x + ox, this.y + oy)
-      .setDisplaySize(w * 0.5, w * 0.62)
+      .setDisplaySize(w * 0.66, w * 0.82)
       .setFlipX(flip)
       .setRotation(rot)
       .setAlpha(a);

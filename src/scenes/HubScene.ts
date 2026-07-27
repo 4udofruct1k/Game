@@ -8,7 +8,7 @@ import { ENCHANT_MAX } from '../data/balance';
 import { RARITY_NAMES, RARITY_ORDER, type Rarity } from '../data/rarity';
 import { RARITY_COLORS } from '../data/theme';
 import { BASE_W, BASE_H } from '../data/balance';
-import { centerUICamera, addFullscreenButton } from '../ui/layout';
+import { centerUICamera, addFullscreenButton, styledButton } from '../ui/layout';
 
 export class HubScene extends Phaser.Scene {
   private goldText!: Phaser.GameObjects.Text;
@@ -189,13 +189,6 @@ export class HubScene extends Phaser.Scene {
   }
 
   private makeButton(x: number, y: number, w: number, h: number, label: string, color: number, cb: () => void): Phaser.GameObjects.Container {
-    const bg = this.add.rectangle(0, 0, w, h, color).setStrokeStyle(2, 0x6a6a9a);
-    const txt = this.add.text(0, 0, label, { fontFamily: 'system-ui', fontSize: h >= 40 ? '15px' : '12px', color: '#fff' }).setOrigin(0.5);
-    const c = this.add.container(x + w / 2, y + h / 2, [bg, txt]);
-    c.setSize(w, h).setInteractive({ useHandCursor: true });
-    c.on('pointerover', () => bg.setFillStyle(Phaser.Display.Color.IntegerToColor(color).lighten(12).color));
-    c.on('pointerout', () => bg.setFillStyle(color));
-    c.on('pointerdown', cb);
-    return c;
+    return styledButton(this, x + w / 2, y + h / 2, w, h, label, color, cb);
   }
 }
