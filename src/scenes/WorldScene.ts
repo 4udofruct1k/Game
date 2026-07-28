@@ -692,6 +692,9 @@ export class WorldScene extends Phaser.Scene {
             const e = this.randomNearbyEnemy(560);
             const tx = e ? e.x : px + (Math.random() - 0.5) * 500;
             const ty = e ? e.y : py + (Math.random() - 0.5) * 500;
+            // разряд «с неба» в точку удара
+            this.lightningBolt(tx + (Math.random() - 0.5) * 40, ty - 300, tx, ty, fx(0x9fe0ff), 7, 26);
+            this.cameras.main.shake(70, 0.003);
             this.novaRing(tx, ty, 110, fx(0x9fe0ff));
             this.aoeBurst(tx, ty, 110, input, el, fx(0x9fe0ff));
           });
@@ -701,6 +704,15 @@ export class WorldScene extends Phaser.Scene {
       case 'void': {
         // Разлом Пустоты — притягивает врагов к центру + урон
         const r = ult ? 480 : 340;
+        // воронка: закручивающиеся внутрь частицы + тёмное ядро
+        const core = this.add.circle(px, py, r * 0.18, 0x10001e, 0.55).setDepth(7).setStrokeStyle(3, 0xb060ff, 0.9);
+        this.tweens.add({ targets: core, scale: 0.2, alpha: 0, angle: 220, duration: 320, onComplete: () => core.destroy() });
+        for (let i = 0; i < 16; i++) {
+          const a = (i / 16) * Math.PI * 2; const sx = px + Math.cos(a) * r * 0.9, sy = py + Math.sin(a) * r * 0.9;
+          const m = this.add.circle(sx, sy, 3, 0xc98cff, 0.9).setDepth(7).setBlendMode(Phaser.BlendModes.ADD);
+          const ia = a + 1.1;
+          this.tweens.add({ targets: m, x: px + Math.cos(ia) * 12, y: py + Math.sin(ia) * 12, alpha: 0, scale: 0.3, duration: 300, ease: 'Quad.easeIn', onComplete: () => m.destroy() });
+        }
         this.novaRing(px, py, r, 0xb060ff);
         for (const e of this.enemies) {
           if (!e.active) continue;
@@ -729,6 +741,7 @@ export class WorldScene extends Phaser.Scene {
         this.player.grantShield(ult ? 3000 : 1800);
         this.run.currentHP = Math.min(this.run.stats().maxHP, this.run.currentHP + this.run.stats().maxHP * 0.12);
         this.novaRing(px, py, 260, 0x7ae090);
+        this.risingMotes(px, py, 150, 0x9fe8a0, 12);
         this.aoeBurst(px, py, 260, input, el, 0x7ae090);
         break;
       }
@@ -767,8 +780,15 @@ export class WorldScene extends Phaser.Scene {
       case 'meteor': {
         // одиночный тяжёлый снаряд-взрыв в цель/по направлению
         const t = this.nearestEnemyPos() ?? { x: px + Math.cos(this.player.facing.angle()) * 300, y: py + Math.sin(this.player.facing.angle()) * 300 };
-        this.fxCircle(t.x, t.y, 30, fx(0xff5020), 0.3);
-        this.time.delayedCall(ult ? 260 : 200, () => {
+        const fall = ult ? 260 : 200;
+        // телеграф-круг на земле + падающий с неба огненный снаряд со шлейфом
+        const mark = this.add.circle(t.x, t.y, 30, fx(0xff5020), 0).setStrokeStyle(3, fx(0xff7030), 0.8).setDepth(4);
+        this.tweens.add({ targets: mark, radius: (ult ? 260 : 170) * 0.6, alpha: 0.2, duration: fall, onComplete: () => mark.destroy() });
+        const rock = this.add.image(t.x + 70, t.y - 340, this.textures.exists('proj_orb') ? 'proj_orb' : 'circle')
+          .setDepth(10).setScale(ult ? 2.6 : 2).setTint(fx(0xff6a30)).setBlendMode(Phaser.BlendModes.ADD);
+        this.tweens.add({ targets: rock, x: t.x, y: t.y, duration: fall, ease: 'Quad.easeIn',
+          onUpdate: () => this.fxCircle(rock.x, rock.y, 16, fx(0xff7030), 0.4), onComplete: () => rock.destroy() });
+        this.time.delayedCall(fall, () => {
           const r = ult ? 260 : 170;
           this.novaRing(t.x, t.y, r, fx(0xff7030));
           this.aoeBurst(t.x, t.y, r, input, el, fx(0xff7030));
@@ -814,6 +834,7 @@ export class WorldScene extends Phaser.Scene {
         this.run.currentHP = Math.min(st.maxHP, this.run.currentHP + st.maxHP * (ult ? 0.5 : 0.28));
         this.novaRing(px, py, ult ? 360 : 240, 0xffe89a);
         this.spawnPickupFx(px, py, 0x9fe0a0);
+        this.risingMotes(px, py, ult ? 200 : 140, 0x9fe8a0, ult ? 18 : 12);
         this.aoeBurst(px, py, ult ? 360 : 240, input, 'radiance', 0xffe89a);
         if (ult) this.player.grantShield(2600);
         break;
@@ -821,6 +842,10 @@ export class WorldScene extends Phaser.Scene {
       case 'shield': {
         this.player.grantShield(ult ? 4000 : 2200);
         this.novaRing(px, py, 260, 0xffe08a);
+        this.risingMotes(px, py, 150, 0xffe08a, 14);
+        // мерцающий купол-щит вокруг игрока
+        const dome = this.add.circle(px, py, 46, 0xffe08a, 0.12).setDepth(9).setStrokeStyle(3, 0xffe08a, 0.8);
+        this.tweens.add({ targets: dome, scale: 1.15, alpha: 0, duration: 620, ease: 'Quad.easeOut', onComplete: () => dome.destroy() });
         this.aoeBurst(px, py, 260, input, 'radiance', 0xffe08a);
         break;
       }
@@ -876,31 +901,110 @@ export class WorldScene extends Phaser.Scene {
   private spinSlash(x: number, y: number, r: number, color: number, i: number): void {
     const s = this.slashFx;
     this.tweens.killTweensOf(s);
-    s.setVisible(true).setPosition(x, y).setTint(color).setAlpha(0.9).setScale((r / 127) * 0.9).setRotation(i * 1.4);
-    this.tweens.add({ targets: s, rotation: i * 1.4 + Math.PI * 1.4, alpha: 0, duration: 260, ease: 'Quad.easeOut', onComplete: () => s.setVisible(false) });
+    s.setVisible(true).setPosition(x, y).setTint(color).setAlpha(0.85)
+      .setScale((r / 127) * 0.95).setRotation(i * 1.4).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: s, rotation: i * 1.4 + Math.PI * 1.5, alpha: 0, duration: 280, ease: 'Quad.easeOut',
+      onComplete: () => s.setVisible(false).setBlendMode(Phaser.BlendModes.NORMAL),
+    });
+    // яркий полумесяц-росчерк, прочерчивающий дугу
+    this.slashArc(x, y, r * 0.52, i * 1.4, color, i % 2 ? -1 : 1);
   }
 
-  // Расширяющееся кольцо (нова) — два кольца + вспышка-ядро + искры.
+  // Светящийся полумесяц, «прочерчивающий» дугу (аддитивный, ядро белое).
+  private slashArc(x: number, y: number, r: number, baseAngle: number, color: number, dir: number): void {
+    const g = this.add.graphics().setDepth(10).setBlendMode(Phaser.BlendModes.ADD);
+    const spread = 0.55;
+    const draw = (a: number) => {
+      g.clear();
+      g.lineStyle(11, color, 0.45); g.beginPath(); g.arc(x, y, r, a - spread, a + spread); g.strokePath();
+      g.lineStyle(4, 0xffffff, 0.9); g.beginPath(); g.arc(x, y, r * 1.02, a - spread * 0.8, a + spread * 0.8); g.strokePath();
+    };
+    const start = baseAngle - dir * 1.35;
+    const o = { v: 0 };
+    this.tweens.add({
+      targets: o, v: 1, duration: 240, ease: 'Quad.easeOut',
+      onUpdate: () => draw(start + dir * 2.5 * o.v),
+      onComplete: () => g.destroy(),
+    });
+  }
+
+  // Зазубренная молния между двумя точками (свечение + ядро), аддитивная.
+  private lightningBolt(x1: number, y1: number, x2: number, y2: number, color: number, seg = 6, jitter = 18): void {
+    const pts: { x: number; y: number }[] = [{ x: x1, y: y1 }];
+    const dx = x2 - x1, dy = y2 - y1; const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len;
+    for (let i = 1; i < seg; i++) {
+      const t = i / seg; const j = (Math.random() - 0.5) * jitter;
+      pts.push({ x: x1 + dx * t + nx * j, y: y1 + dy * t + ny * j });
+    }
+    pts.push({ x: x2, y: y2 });
+    const g = this.add.graphics().setDepth(10).setBlendMode(Phaser.BlendModes.ADD);
+    const stroke = (w: number, c: number, a: number) => {
+      g.lineStyle(w, c, a); g.beginPath(); g.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+      g.strokePath();
+    };
+    stroke(9, color, 0.3); stroke(4, color, 0.8); stroke(1.5, 0xffffff, 1);
+    this.tweens.add({ targets: g, alpha: 0, duration: 190, onComplete: () => g.destroy() });
+  }
+
+  // Расширяющееся кольцо-ударная волна: вспышка + 2 кольца + свечение + осколки + искры.
   private novaRing(x: number, y: number, r: number, color: number): void {
-    // яркая вспышка в центре
-    const flash = this.add.circle(x, y, r * 0.28, 0xffffff, 0.85).setDepth(8);
-    this.tweens.add({ targets: flash, scale: 0.2, alpha: 0, duration: 200, onComplete: () => flash.destroy() });
-    // внешнее кольцо
-    const ring = this.add.circle(x, y, 12, color, 0).setStrokeStyle(7, color, 0.9).setDepth(8);
-    this.tweens.add({ targets: ring, radius: r, alpha: 0, duration: 340, ease: 'Cubic.easeOut', onUpdate: () => ring.setStrokeStyle(7, color, ring.alpha), onComplete: () => ring.destroy() });
-    // внутреннее кольцо (тоньше, быстрее)
-    const ring2 = this.add.circle(x, y, 8, 0xffffff, 0).setStrokeStyle(3, 0xffffff, 0.7).setDepth(9);
-    this.tweens.add({ targets: ring2, radius: r * 0.7, alpha: 0, duration: 260, ease: 'Cubic.easeOut', onUpdate: () => ring2.setStrokeStyle(3, 0xffffff, ring2.alpha), onComplete: () => ring2.destroy() });
-    this.fxCircle(x, y, r * 0.62, color, 0.2);
+    const flash = this.add.circle(x, y, r * 0.32, 0xffffff, 0.9).setDepth(11).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({ targets: flash, scale: 0.1, alpha: 0, duration: 170, onComplete: () => flash.destroy() });
+    // толстая внешняя волна (утончается по мере расширения)
+    const ring = this.add.circle(x, y, 10, color, 0).setStrokeStyle(9, color, 0.95).setDepth(8).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: ring, radius: r, alpha: 0, duration: 360, ease: 'Cubic.easeOut',
+      onUpdate: () => ring.setStrokeStyle(9 * (0.35 + 0.65 * ring.alpha), color, ring.alpha),
+      onComplete: () => ring.destroy(),
+    });
+    // быстрое белое ядро-кольцо
+    const ring2 = this.add.circle(x, y, 8, 0xffffff, 0).setStrokeStyle(3, 0xffffff, 0.85).setDepth(9).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: ring2, radius: r * 0.72, alpha: 0, duration: 260, ease: 'Cubic.easeOut',
+      onUpdate: () => ring2.setStrokeStyle(3, 0xffffff, ring2.alpha),
+      onComplete: () => ring2.destroy(),
+    });
+    this.fxCircle(x, y, r * 0.6, color, 0.22);
+    this.shards(x, y, color, Math.min(12, Math.round(r / 34)), r * 0.85);
     this.sparks(x, y, color, Math.min(14, Math.round(r / 26)), r * 0.9);
   }
 
-  // Искры-частицы, разлетающиеся из точки (переиспользуемый пул fx-кругов).
+  // Разлетающиеся продолговатые осколки-искры (аддитивные, с торможением).
+  private shards(x: number, y: number, color: number, count: number, reach: number): void {
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + Math.random() * 0.6;
+      const d = reach * (0.4 + Math.random() * 0.6);
+      const len = 5 + Math.random() * 6;
+      const sh = this.add.rectangle(x, y, len, 2.5, color, 1).setDepth(9).setRotation(a).setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: sh, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d, scaleX: 0.25, alpha: 0,
+        duration: 260 + Math.random() * 180, ease: 'Cubic.easeOut', onComplete: () => sh.destroy(),
+      });
+    }
+  }
+
+  // Восходящие мотыльки света (лечение/щит/благословение).
+  private risingMotes(x: number, y: number, r: number, color: number, count: number): void {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2; const rr = Math.random() * r;
+      const m = this.add.circle(x + Math.cos(a) * rr, y + r * 0.35, 3 + Math.random() * 2, color, 0.9)
+        .setDepth(10).setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: m, y: m.y - r * 0.9 - Math.random() * r * 0.4, alpha: 0, scale: 0.3,
+        duration: 600 + Math.random() * 260, ease: 'Sine.easeOut', onComplete: () => m.destroy(),
+      });
+    }
+  }
+
+  // Искры-частицы, разлетающиеся из точки (аддитивные, гаснут).
   private sparks(x: number, y: number, color: number, count: number, reach: number): void {
     for (let i = 0; i < count; i++) {
       const a = (i / count) * Math.PI * 2 + Math.random() * 0.4;
       const d = reach * (0.5 + Math.random() * 0.5);
-      const s = this.add.circle(x, y, 3 + Math.random() * 2, color, 0.95).setDepth(9);
+      const s = this.add.circle(x, y, 3 + Math.random() * 2, color, 0.95).setDepth(9).setBlendMode(Phaser.BlendModes.ADD);
       this.tweens.add({
         targets: s,
         x: x + Math.cos(a) * d,
@@ -914,14 +1018,25 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  // Фронтальный конус (дыхание/волна).
+  // Фронтальный конус (дыхание/волна) — слои свечения + вылетающие частицы.
   private coneStrike(range: number, arc: number, input: HitInput, el: Element, color: number): void {
     const angle = this.player.facing.angle();
-    const g = this.add.graphics().setDepth(8);
-    g.fillStyle(color, 0.35);
-    g.slice(this.player.x, this.player.y, range, angle - arc / 2, angle + arc / 2, false);
-    g.fillPath();
-    this.tweens.add({ targets: g, alpha: 0, duration: 260, onComplete: () => g.destroy() });
+    const px = this.player.x, py = this.player.y;
+    const g = this.add.graphics().setDepth(8).setBlendMode(Phaser.BlendModes.ADD);
+    g.fillStyle(color, 0.2); g.slice(px, py, range, angle - arc / 2, angle + arc / 2, false); g.fillPath();
+    g.fillStyle(color, 0.3); g.slice(px, py, range * 0.7, angle - arc * 0.36, angle + arc * 0.36, false); g.fillPath();
+    g.fillStyle(0xffffff, 0.28); g.slice(px, py, range * 0.4, angle - arc * 0.2, angle + arc * 0.2, false); g.fillPath();
+    this.tweens.add({ targets: g, alpha: 0, duration: 280, ease: 'Quad.easeOut', onComplete: () => g.destroy() });
+    // струя частиц наружу по направлению конуса
+    for (let i = 0; i < 10; i++) {
+      const a = angle + (Math.random() - 0.5) * arc;
+      const d = range * (0.5 + Math.random() * 0.5);
+      const m = this.add.circle(px, py, 2.5 + Math.random() * 2.5, color, 0.9).setDepth(9).setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: m, x: px + Math.cos(a) * d, y: py + Math.sin(a) * d, alpha: 0, scale: 0.2,
+        duration: 240 + Math.random() * 120, ease: 'Cubic.easeOut', onComplete: () => m.destroy(),
+      });
+    }
     for (const e of this.enemies) {
       if (!e.active) continue;
       const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
@@ -936,15 +1051,24 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  // Луч по направлению.
+  // Луч по направлению — слои свечения + дульная вспышка + бегущий импульс + взрыв в конце.
   private beamStrike(range: number, input: HitInput, el: Element, color: number): void {
     const angle = this.player.facing.angle();
-    const ex = this.player.x + Math.cos(angle) * range;
-    const ey = this.player.y + Math.sin(angle) * range;
-    const g = this.add.graphics().setDepth(8);
-    g.lineStyle(14, color, 0.5).lineBetween(this.player.x, this.player.y, ex, ey);
-    g.lineStyle(5, 0xffffff, 0.9).lineBetween(this.player.x, this.player.y, ex, ey);
-    this.tweens.add({ targets: g, alpha: 0, duration: 220, onComplete: () => g.destroy() });
+    const sx = this.player.x, sy = this.player.y;
+    const ex = sx + Math.cos(angle) * range;
+    const ey = sy + Math.sin(angle) * range;
+    const g = this.add.graphics().setDepth(8).setBlendMode(Phaser.BlendModes.ADD);
+    g.lineStyle(22, color, 0.22).lineBetween(sx, sy, ex, ey);
+    g.lineStyle(12, color, 0.55).lineBetween(sx, sy, ex, ey);
+    g.lineStyle(4, 0xffffff, 0.95).lineBetween(sx, sy, ex, ey);
+    this.tweens.add({ targets: g, alpha: 0, duration: 240, onComplete: () => g.destroy() });
+    // дульная вспышка + бегущий по лучу импульс + всплеск на конце
+    this.fxCircle(sx, sy, 44, color, 0.5);
+    const pulse = this.add.circle(sx, sy, 11, 0xffffff, 0.9).setDepth(10).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: pulse, x: ex, y: ey, duration: 130, ease: 'Quad.easeOut',
+      onComplete: () => { pulse.destroy(); this.novaRing(ex, ey, 90, color); },
+    });
     const half = 34;
     for (const e of this.enemies) {
       if (!e.active) continue;
@@ -978,10 +1102,14 @@ export class WorldScene extends Phaser.Scene {
       targets.push({ x: best.x, y: best.y, e: best });
       from = { x: best.x, y: best.y };
     }
-    const g = this.add.graphics().setDepth(8).lineStyle(3, lineCol, 0.9);
+    // зазубренные разряды между узлами + вспышка на каждом попадании
     let prev = { x: this.player.x, y: this.player.y };
-    for (const t of targets) { g.lineBetween(prev.x, prev.y, t.x, t.y); prev = t; }
-    this.tweens.add({ targets: g, alpha: 0, duration: 240, onComplete: () => g.destroy() });
+    for (const t of targets) {
+      this.lightningBolt(prev.x, prev.y, t.x, t.y, lineCol, 6, 20);
+      const f = this.add.circle(t.x, t.y, 15, 0xffffff, 0.9).setDepth(11).setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({ targets: f, scale: 0.2, alpha: 0, duration: 220, onComplete: () => f.destroy() });
+      prev = t;
+    }
     for (const t of targets) if (t.e && t.e.active) this.dealToEnemy(t.e, input, el);
     // добить босса, если рядом
     if (this.boss && this.boss.active && Phaser.Math.Distance.Between(this.player.x, this.player.y, this.boss.x, this.boss.y) < 420) this.dealToBoss(input, el);
@@ -1004,17 +1132,29 @@ export class WorldScene extends Phaser.Scene {
     doJump(0);
   }
 
-  // Ядовитое облако — залипающая зона (переиспользует систему телеграфов как DoT).
+  // Залипающая зона (яд/освящение) — контурное кольцо на земле + всплывающие клубы.
   private playerCloud(x: number, y: number, r: number, ticks: number, input: HitInput, el: Element = 'poison'): void {
     const color = el === 'radiance' ? 0xffe89a : el === 'poison' ? 0x8fd24a : ELEMENT_COLORS[el] ?? 0x8fd24a;
-    this.fxCircle(x, y, r, color, 0.26);
+    this.fxCircle(x, y, r, color, 0.24);
+    // маркер зоны на земле (мягкая заливка + пульсирующий контур)
+    const zone = this.add.circle(x, y, r, color, 0.08).setDepth(3).setStrokeStyle(2, color, 0.5);
+    this.tweens.add({ targets: zone, alpha: { from: 0.12, to: 0.05 }, yoyo: true, repeat: -1, duration: 500 });
+    const puff = () => {
+      for (let i = 0; i < 5; i++) {
+        const a = Math.random() * Math.PI * 2; const rr = Math.random() * r * 0.9;
+        const m = this.add.circle(x + Math.cos(a) * rr, y + r * 0.25, 3 + Math.random() * 3, color, 0.65)
+          .setDepth(4).setBlendMode(Phaser.BlendModes.ADD);
+        this.tweens.add({ targets: m, y: m.y - 26 - Math.random() * 30, alpha: 0, scale: 1.4, duration: 560, onComplete: () => m.destroy() });
+      }
+    };
     for (let i = 0; i < ticks; i++) {
       this.time.delayedCall(i * 400, () => {
-        this.fxCircle(x, y, r, color, 0.13);
+        puff();
         for (const e of this.enemies) if (e.active && Phaser.Math.Distance.Between(x, y, e.x, e.y) <= r) this.dealToEnemy(e, input, el);
         if (this.boss && this.boss.active && Phaser.Math.Distance.Between(x, y, this.boss.x, this.boss.y) <= r) this.dealToBoss(input, el);
       });
     }
+    this.time.delayedCall(ticks * 400 + 120, () => { this.tweens.killTweensOf(zone); zone.destroy(); });
   }
 
   private freezeInRadius(x: number, y: number, r: number, ms: number): void {
@@ -1066,6 +1206,12 @@ export class WorldScene extends Phaser.Scene {
 
   private aoeBurst(x: number, y: number, radius: number, input: HitInput, el: Element, color: number): void {
     this.fxCircle(x, y, radius, color, 0.35);
+    // лёгкая ударная волна по краю зоны (аддитивная), для читаемости площади
+    const ring = this.add.circle(x, y, radius * 0.3, color, 0).setStrokeStyle(4, color, 0.7).setDepth(8).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: ring, radius, alpha: 0, duration: 280, ease: 'Cubic.easeOut',
+      onUpdate: () => ring.setStrokeStyle(4, color, ring.alpha), onComplete: () => ring.destroy(),
+    });
     for (const e of this.enemies) {
       if (!e.active) continue;
       if (Phaser.Math.Distance.Between(x, y, e.x, e.y) <= radius) this.dealToEnemy(e, input, el);
